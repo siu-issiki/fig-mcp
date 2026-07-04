@@ -274,6 +274,13 @@ describe("effect and gradient composition", () => {
     expect(svg).toContain("feDropShadow");
   });
 
+  it("does not crash on non-string paint types", () => {
+    const rect = base(45, "weird-paint", "RECTANGLE", {
+      fills: [{ type: 1, visible: true } as unknown as Record<string, unknown>],
+    });
+    expect(() => renderScreen(rect, undefined, [])).not.toThrow();
+  });
+
   it("keeps shadow spread when chained with layer blur", () => {
     const rect = base(44, "blur-spread", "RECTANGLE", {
       fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],

@@ -47,7 +47,8 @@ export function paintToColor(paint: Paint | undefined): string | undefined {
 }
 
 function getGradientStops(paint: Paint): GradientStop[] | undefined {
-  if (!paint.type?.startsWith("GRADIENT")) return undefined;
+  // paint.type may decode as a non-string (numeric enum) in some schemas
+  if (typeof paint.type !== "string" || !paint.type.startsWith("GRADIENT")) return undefined;
   const stops = paint.stops ?? paint.gradientStops;
   return Array.isArray(stops) && stops.length > 0 ? stops : undefined;
 }
