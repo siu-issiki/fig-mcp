@@ -1,6 +1,6 @@
 {
-  "name": "@bilalba/fig-mcp",
-  "version": "1.1.5",
+  "name": "@siu-issiki/fig-mcp",
+  "version": "2.0.0",
   "description": "MCP server for parsing .fig files",
   "keywords": [
     "fig",
@@ -8,13 +8,13 @@
     "model-context-protocol",
     "kiwi"
   ],
-  "homepage": "https://github.com/bilalba/fig-mcp#readme",
+  "homepage": "https://github.com/siu-issiki/fig-mcp#readme",
   "bugs": {
-    "url": "https://github.com/bilalba/fig-mcp/issues"
+    "url": "https://github.com/siu-issiki/fig-mcp/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bilalba/fig-mcp.git"
+    "url": "git+https://github.com/siu-issiki/fig-mcp.git"
   },
   "license": "MIT",
   "author": "bilal",
@@ -45,7 +45,8 @@
     "render-node": "tsx scripts/render-node.ts",
     "viewer": "tsx src/web-viewer/build-client.ts && tsx src/web-viewer/server.ts",
     "viewer:build": "tsx src/web-viewer/build-client.ts",
-    "viewer:dev": "tsx src/web-viewer/build-client.ts --watch & tsx src/web-viewer/server.ts"
+    "viewer:dev": "tsx src/web-viewer/build-client.ts --watch & tsx src/web-viewer/server.ts",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
@@ -66,5 +67,8 @@
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.9"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
