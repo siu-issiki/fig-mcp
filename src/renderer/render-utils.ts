@@ -99,6 +99,23 @@ export function computeCommandBounds(
 }
 
 /**
+ * Invert an affine transform. Returns null for singular matrices.
+ */
+export function invertTransform(t: TransformMatrix): TransformMatrix | null {
+  const det = t.a * t.d - t.b * t.c;
+  if (Math.abs(det) < 1e-12) return null;
+  const inv = 1 / det;
+  return {
+    a: t.d * inv,
+    b: -t.b * inv,
+    c: -t.c * inv,
+    d: t.a * inv,
+    e: (t.c * t.f - t.d * t.e) * inv,
+    f: (t.b * t.e - t.a * t.f) * inv,
+  };
+}
+
+/**
  * Build SVG path string from commands, applying transform.
  */
 export function buildSvgPath(commands: PathCommand[], transform: TransformMatrix): string {

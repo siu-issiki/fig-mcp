@@ -166,3 +166,40 @@ describe("render fidelity", () => {
     expect(missing).toEqual(["Definitely Not A Real Font 12345"]);
   });
 });
+
+describe("gradient fills", () => {
+  const stops = [
+    { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+    { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+  ];
+
+  it("renders linear gradients as SVG linearGradient", () => {
+    const rect = base(20, "grad", "RECTANGLE", {
+      fills: [{ type: "GRADIENT_LINEAR", visible: true, stops }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("<linearGradient");
+    expect(svg).toMatch(/fill="url\(#grad-\d+\)"/);
+    expect(svg).toContain('stop-color="rgb(255, 0, 0)"');
+    expect(svg).toContain('stop-opacity="0.500"');
+  });
+
+  it("renders radial gradients as SVG radialGradient", () => {
+    const rect = base(21, "grad-r", "RECTANGLE", {
+      fills: [{ type: "GRADIENT_RADIAL", visible: true, stops }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("<radialGradient");
+    expect(svg).toMatch(/fill="url\(#grad-\d+\)"/);
+  });
+
+  it("falls back to the first stop for text fills", () => {
+    const node = base(22, "grad-text", "TEXT", {
+      characters: "abc",
+      style: textStyle,
+      fills: [{ type: "GRADIENT_LINEAR", visible: true, stops }],
+    });
+    const { svg } = renderScreen(node, undefined, []);
+    expect(svg).toContain('fill="rgb(255, 0, 0)"');
+  });
+});

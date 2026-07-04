@@ -159,6 +159,9 @@ export interface Paint {
   color?: Color;
   gradientStops?: GradientStop[];
   gradientTransform?: Transform;
+  /** Raw kiwi field names for gradients */
+  stops?: GradientStop[];
+  transform?: Transform;
   scaleMode?: "FILL" | "FIT" | "TILE" | "STRETCH";
   imageRef?: string;
   blendMode?: BlendMode;

@@ -2,8 +2,10 @@
  * Paint handling utilities for SVG rendering
  */
 
-import type { FigNode, Paint } from "../parser/types.js";
+import type { FigNode, Paint, GradientStop } from "../parser/types.js";
 import { colorToCSS } from "../parser/layout-inference.js";
+import type { RenderContext, TransformMatrix } from "./render-types.js";
+import { invertTransform } from "./render-utils.js";
 
 /**
  * Get paints array from a node (handles both 'fills'/'strokes' and 'fillPaints'/'strokePaints').
@@ -27,12 +29,78 @@ export function getVisiblePaint(paints: Paint[] | undefined): Paint | undefined 
  * Returns undefined if the paint is not visible or not a solid color.
  */
 export function paintToColor(paint: Paint | undefined): string | undefined {
-  if (!paint || paint.visible === false || paint.type !== "SOLID" || !paint.color) {
-    return undefined;
+  if (!paint || paint.visible === false) return undefined;
+  if (paint.type === "SOLID" && paint.color) {
+    const opacity = paint.opacity ?? 1;
+    const color = { ...paint.color, a: paint.color.a * opacity };
+    return colorToCSS(color);
   }
-  const opacity = paint.opacity ?? 1;
-  const color = { ...paint.color, a: paint.color.a * opacity };
-  return colorToCSS(color);
+  // Gradient fallback for consumers that can only use a flat color
+  // (text fills, mask shapes): approximate with the first stop.
+  const stops = getGradientStops(paint);
+  if (stops?.length) {
+    const opacity = paint.opacity ?? 1;
+    const color = { ...stops[0].color, a: (stops[0].color.a ?? 1) * opacity };
+    return colorToCSS(color);
+  }
+  return undefined;
+}
+
+function getGradientStops(paint: Paint): GradientStop[] | undefined {
+  if (!paint.type?.startsWith("GRADIENT")) return undefined;
+  const stops = paint.stops ?? paint.gradientStops;
+  return Array.isArray(stops) && stops.length > 0 ? stops : undefined;
+}
+
+/**
+ * Convert a paint to an SVG fill value: a plain color for SOLID paints, or
+ * a url(#…) reference for gradients (the gradient definition is pushed into
+ * ctx.defs). Figma's paint transform maps normalized shape space to gradient
+ * space, so the SVG gradient carries its inverse and objectBoundingBox units.
+ */
+export function paintToSvgFill(
+  paint: Paint | undefined,
+  ctx: RenderContext | undefined,
+): string | undefined {
+  if (!paint || paint.visible === false) return undefined;
+  if (paint.type === "SOLID") return paintToColor(paint);
+
+  const stops = getGradientStops(paint);
+  if (!stops || !ctx) return paintToColor(paint);
+
+  const rawT = paint.transform ?? paint.gradientTransform;
+  const shapeToGradient: TransformMatrix = rawT
+    ? { a: rawT.m00, b: rawT.m10, c: rawT.m01, d: rawT.m11, e: rawT.m02, f: rawT.m12 }
+    : { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  const gradientToShape = invertTransform(shapeToGradient);
+  if (!gradientToShape) return paintToColor(paint);
+
+  const paintOpacity = paint.opacity ?? 1;
+  const stopsSvg = stops
+    .map((stop) => {
+      const c = stop.color;
+      const rgb = `rgb(${Math.round(c.r * 255)}, ${Math.round(c.g * 255)}, ${Math.round(c.b * 255)})`;
+      const alpha = (c.a ?? 1) * paintOpacity;
+      const opacityAttr = alpha < 1 ? ` stop-opacity="${alpha.toFixed(3)}"` : "";
+      return `<stop offset="${stop.position}" stop-color="${rgb}"${opacityAttr} />`;
+    })
+    .join("");
+
+  const id = `grad-${ctx.shadowCounter++}`;
+  const gt = `gradientTransform="matrix(${gradientToShape.a} ${gradientToShape.b} ${gradientToShape.c} ${gradientToShape.d} ${gradientToShape.e} ${gradientToShape.f})"`;
+
+  if (paint.type === "GRADIENT_RADIAL" || paint.type === "GRADIENT_DIAMOND") {
+    ctx.defs.push(
+      `<radialGradient id="${id}" gradientUnits="objectBoundingBox" cx="0.5" cy="0.5" r="0.5" ${gt}>${stopsSvg}</radialGradient>`,
+    );
+  } else {
+    // GRADIENT_LINEAR (and GRADIENT_ANGULAR approximated as linear):
+    // the gradient axis runs from (0, 0.5) to (1, 0.5) in gradient space
+    ctx.defs.push(
+      `<linearGradient id="${id}" gradientUnits="objectBoundingBox" x1="0" y1="0.5" x2="1" y2="0.5" ${gt}>${stopsSvg}</linearGradient>`,
+    );
+  }
+  return `url(#${id})`;
 }
 
 /**

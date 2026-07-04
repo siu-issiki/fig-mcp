@@ -41,6 +41,7 @@ import {
   getPaints,
   getVisiblePaint,
   paintToColor,
+  paintToSvgFill,
   paintToImageHash,
   detectImageFormat,
   getMimeType,
@@ -516,6 +517,7 @@ function renderRectangle(
   output: string[],
   includeFills = true,
   includeStrokes = true,
+  ctx?: RenderContext,
 ): boolean {
   // Fills are always read so image paints stay renderable when
   // includeImages is on but includeFills is off; only the solid fill
@@ -523,8 +525,8 @@ function renderRectangle(
   const fills = getPaints(node as FigNode, "fills");
   const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
-  const fillColor = includeFills ? paintToColor(fillPaint) : undefined;
-  const strokeColor = paintToColor(getVisiblePaint(strokes));
+  const fillColor = includeFills ? paintToSvgFill(fillPaint, ctx) : undefined;
+  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx);
 
   // Check for image fill
   let hasImageFill = false;
@@ -547,15 +549,22 @@ function renderRectangle(
             ? "none"
             : "xMidYMid slice";
 
-      const pos = transformPoint(0, 0, transform);
-      const width = node.width ?? 0;
-      const height = node.height ?? 0;
+      // Transform both corners so mirrored nodes (negative scale, e.g.
+      // horizontally flipped images) render at their real bounds instead of
+      // extending away from the anchor. The mirroring itself is not applied
+      // to the pixels; position/size fidelity matters far more here.
+      const c0 = transformPoint(0, 0, transform);
+      const c1 = transformPoint(node.width ?? 0, node.height ?? 0, transform);
+      const rectX = Math.min(c0.x, c1.x);
+      const rectY = Math.min(c0.y, c1.y);
+      const rectW = Math.abs(c1.x - c0.x);
+      const rectH = Math.abs(c1.y - c0.y);
 
       const attrs: string[] = [
-        `x="${pos.x}"`,
-        `y="${pos.y}"`,
-        `width="${width}"`,
-        `height="${height}"`,
+        `x="${rectX}"`,
+        `y="${rectY}"`,
+        `width="${rectW}"`,
+        `height="${rectH}"`,
         `preserveAspectRatio="${preserve}"`,
         `href="data:${mimeType};base64,${base64}"`,
       ];
@@ -585,11 +594,12 @@ function renderRectangle(
     Math.abs(p0.y - p1.y) < 0.01 && Math.abs(p1.x - p2.x) < 0.01;
 
   if (isAxisAligned) {
+    // min/abs so mirrored (negative-scale) nodes keep their real bounds
     const attrs: string[] = [
-      `x="${p0.x}"`,
-      `y="${p0.y}"`,
-      `width="${width}"`,
-      `height="${height}"`,
+      `x="${Math.min(p0.x, p2.x)}"`,
+      `y="${Math.min(p0.y, p2.y)}"`,
+      `width="${Math.abs(p2.x - p0.x)}"`,
+      `height="${Math.abs(p2.y - p0.y)}"`,
     ];
 
     if (fillColor) attrs.push(`fill="${fillColor}"`);
@@ -610,7 +620,7 @@ function renderRectangle(
       // SVG clamps rx/ry independently which creates elliptical corners
       // when cornerRadius > min(width, height)/2, producing a tapered "football" shape.
       // By clamping ourselves, we ensure proper pill/stadium shapes.
-      const maxRadius = Math.min(width, height) / 2;
+      const maxRadius = Math.min(Math.abs(p2.x - p0.x), Math.abs(p2.y - p0.y)) / 2;
       const clampedRadius = Math.min(cornerRadius, maxRadius);
       attrs.push(`rx="${clampedRadius}"`);
       attrs.push(`ry="${clampedRadius}"`);
@@ -858,6 +868,7 @@ function renderNode(
         nodeOutput,
         options.includeFills,
         options.includeStrokes,
+        ctx,
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
@@ -881,6 +892,7 @@ function renderNode(
           nodeOutput,
           options.includeFills,
           false,
+          ctx,
         );
       }
     }
@@ -911,6 +923,7 @@ function renderNode(
             nodeOutput,
             false,
             true,
+            ctx,
           );
         }
       }
