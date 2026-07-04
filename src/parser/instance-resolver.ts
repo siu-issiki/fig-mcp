@@ -245,7 +245,7 @@ function buildOverrideData(
             visible: typeof boolValue === "boolean" ? boolValue : undefined,
             symbolId: guidValue,
           });
-        } else if (characters) {
+        } else if (typeof characters === "string") {
           entry.characters = characters;
         }
       }
@@ -289,7 +289,7 @@ function buildOverrideData(
 }
 
 function applyOverrideToNode(node: SceneNode, override: OverrideData): void {
-  if (override.characters) {
+  if (typeof override.characters === "string") {
     node.characters = override.characters;
   }
   if (override.fillPaints) {
@@ -405,7 +405,7 @@ function applyComponentPropAssignments(
         const assignment = byDefId.get(defId);
         if (assignment) {
           const existing = overrideByNodeId.get(nodeId) ?? {};
-          if (ref.componentPropNodeField === "TEXT_DATA" && assignment.characters) {
+          if (ref.componentPropNodeField === "TEXT_DATA" && typeof assignment.characters === "string") {
             overrideByNodeId.set(nodeId, { ...existing, characters: assignment.characters });
           } else if (ref.componentPropNodeField === "VISIBLE" && assignment.visible !== undefined) {
             overrideByNodeId.set(nodeId, { ...existing, visible: assignment.visible });
