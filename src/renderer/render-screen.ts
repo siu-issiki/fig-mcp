@@ -462,7 +462,7 @@ const VECTOR_TYPES = new Set([
   "ELLIPSE",
   "BOOLEAN_OPERATION",
 ]);
-const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE"]);
+const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE", "SYMBOL", "TEXT_PATH"]);
 
 /**
  * Render a mask node to create a clipPath definition.
@@ -645,7 +645,7 @@ function renderNode(
         nodeOutput,
       );
     }
-  } else if (node.type === "RECTANGLE") {
+  } else if (node.type === "RECTANGLE" || node.type === "ROUNDED_RECTANGLE") {
     if (
       options.includeFills ||
       options.includeStrokes ||
