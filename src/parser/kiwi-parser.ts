@@ -428,9 +428,11 @@ function convertToFigNode(raw: unknown): FigNode | null {
   if (derivedTextData) {
     const layoutSize = derivedTextData["layoutSize"] as Record<string, unknown> | undefined;
     const baselines = derivedTextData["baselines"] as Array<Record<string, unknown>> | undefined;
+    const glyphs = derivedTextData["glyphs"] as Array<Record<string, unknown>> | undefined;
 
     if (layoutSize && baselines) {
       nodeRecord["derivedTextData"] = {
+        ...(Array.isArray(glyphs) && glyphs.length > 0 ? { glyphs } : {}),
         layoutSize: {
           x: typeof layoutSize["x"] === "number" ? layoutSize["x"] : 0,
           y: typeof layoutSize["y"] === "number" ? layoutSize["y"] : 0,
