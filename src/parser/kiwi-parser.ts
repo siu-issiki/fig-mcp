@@ -203,7 +203,10 @@ export function getNodeTypeName(typeValue: unknown): NodeType {
     ELLIPSE: "ELLIPSE",
     REGULAR_POLYGON: "REGULAR_POLYGON",
     RECTANGLE: "RECTANGLE",
+    ROUNDED_RECTANGLE: "ROUNDED_RECTANGLE",
+    SYMBOL: "SYMBOL",
     TEXT: "TEXT",
+    TEXT_PATH: "TEXT_PATH",
     SLICE: "SLICE",
     COMPONENT: "COMPONENT",
     COMPONENT_SET: "COMPONENT_SET",
@@ -370,6 +373,11 @@ function convertToFigNode(raw: unknown): FigNode | null {
   const strokePaints = obj["strokes"] ?? obj["strokePaints"];
   if (strokePaints !== undefined) {
     nodeRecord["strokes"] = strokePaints;
+  }
+
+  // The kiwi schema stores the mask flag as "mask"
+  if (obj["mask"] !== undefined) {
+    nodeRecord["isMask"] = obj["mask"];
   }
 
   for (const prop of propsToKeep) {
