@@ -395,6 +395,9 @@ function renderTextPath(
   const pathId = `textpath-${ctx.clipCounter++}`;
   ctx.defs.push(`<path id="${pathId}" d="${pathD}" fill="none" />`);
 
+  // Known limitation: textPathStart.forward (reversed path direction) is
+  // not applied — SVG textPath cannot flip direction without reversing the
+  // path itself, so reversed circular text renders mirrored along the arc.
   const tValue = node.textPathStart?.tValue ?? 0;
   const startOffset = `${Math.round((((tValue % 1) + 1) % 1) * 100)}%`;
 
@@ -773,6 +776,7 @@ function renderNode(
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
+    const hasStrokeGeometry = Boolean(sceneNode.strokeGeometry?.length);
     if (options.includeFills || options.includeImages) {
       const fills = getPaints(node, "fills");
       const fillPaint = getVisiblePaint(fills);
@@ -783,7 +787,7 @@ function renderNode(
         sceneNode.width &&
         sceneNode.height
       ) {
-        // Strokes are rendered from strokeGeometry below, not synthesized here
+        // Strokes are rendered from strokeGeometry below when available
         rendered = renderRectangle(
           sceneNode,
           worldTransform,
@@ -795,18 +799,36 @@ function renderNode(
         );
       }
     }
-    // Container strokes use Figma's precomputed strokeGeometry: it carries
-    // dash segments and collapses to nothing for effectively invisible
-    // borders, which a synthesized rect outline would get wrong.
-    if (options.includeStrokes && sceneNode.strokeGeometry?.length) {
-      const strokeRendered = renderStrokeGeometryFill(
-        sceneNode,
-        worldTransform,
-        blobs,
-        ctx,
-        nodeOutput,
-      );
-      rendered = rendered || strokeRendered;
+    if (options.includeStrokes) {
+      if (hasStrokeGeometry) {
+        // Container strokes use Figma's precomputed strokeGeometry: it
+        // carries dash segments and collapses to nothing for effectively
+        // invisible borders, which a synthesized rect outline would get wrong.
+        const strokeRendered = renderStrokeGeometryFill(
+          sceneNode,
+          worldTransform,
+          blobs,
+          ctx,
+          nodeOutput,
+        );
+        rendered = rendered || strokeRendered;
+      } else if (sceneNode.width && sceneNode.height) {
+        // No precomputed geometry (e.g. partially parsed nodes):
+        // fall back to a synthesized rectangular border.
+        const strokeColor = paintToColor(getVisiblePaint(getPaints(node, "strokes")));
+        if (strokeColor) {
+          const strokeRendered = renderRectangle(
+            sceneNode,
+            worldTransform,
+            images,
+            false,
+            nodeOutput,
+            false,
+            true,
+          );
+          rendered = rendered || strokeRendered;
+        }
+      }
     }
   }
 
