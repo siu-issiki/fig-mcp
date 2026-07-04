@@ -237,3 +237,25 @@ describe("image fill transforms", () => {
     expect(svg).toMatch(/<image[^>]*width="100"/);
   });
 });
+
+describe("blur effects", () => {
+  it("applies layer blur (FOREGROUND_BLUR) as a gaussian filter", () => {
+    const rect = base(40, "blurred", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [{ type: "FOREGROUND_BLUR", visible: true, radius: 20 }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain('<feGaussianBlur stdDeviation="10" />');
+    expect(svg).toMatch(/<g filter="url\(#blur-\d+\)">/);
+  });
+
+  it("ignores background blur (no backdrop-filter in SVG) but keeps the fill", () => {
+    const rect = base(41, "glass", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 1, b: 1, a: 0.5 }, visible: true }],
+      effects: [{ type: "BACKGROUND_BLUR", visible: true, radius: 20 }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).not.toContain("feGaussianBlur");
+    expect(svg).toContain("rgba(255, 255, 255, 0.50)");
+  });
+});

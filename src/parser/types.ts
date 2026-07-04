@@ -172,7 +172,9 @@ export type EffectType =
   | "DROP_SHADOW"
   | "INNER_SHADOW"
   | "LAYER_BLUR"
-  | "BACKGROUND_BLUR";
+  | "FOREGROUND_BLUR" // kiwi name for layer blur
+  | "BACKGROUND_BLUR"
+  | "GLASS";
 
 export interface Effect {
   type: EffectType;

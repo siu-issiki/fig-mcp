@@ -145,7 +145,7 @@ Most text renders from **glyph outlines embedded in the file** and needs no font
 - Extract colors, text content, and styling information
 - Render nodes to PNG screenshots with near-design fidelity
 - Export vectors as SVG, PDF, PNG, or WebP
-- Full effect support (shadows, blurs), gradients, masks, dashed borders
+- Effects (shadows, layer blur), gradients, masks, dashed borders — background/glass blur is approximated by the translucent fill (SVG has no backdrop-filter)
 
 ## Fork changes
 

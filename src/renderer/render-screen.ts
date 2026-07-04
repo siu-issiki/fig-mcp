@@ -191,13 +191,33 @@ function generateEffectFilters(
     return undefined;
   }
 
-  // Collect visible shadow effects
+  // Collect visible effects
   const dropShadows = node.effects.filter(
     (e) => e.type === "DROP_SHADOW" && e.visible !== false
   );
   const innerShadows = node.effects.filter(
     (e) => e.type === "INNER_SHADOW" && e.visible !== false
   );
+  // Layer blur ("FOREGROUND_BLUR" in the kiwi schema) blurs the node itself.
+  // BACKGROUND_BLUR/GLASS blur what is BEHIND the node, which SVG cannot
+  // express in a single pass; their translucent fill still renders.
+  const layerBlurs = node.effects.filter(
+    (e) =>
+      (e.type === "FOREGROUND_BLUR" || e.type === "LAYER_BLUR") &&
+      e.visible !== false &&
+      (e.radius ?? 0) > 0
+  );
+
+  if (layerBlurs.length > 0) {
+    const filterId = `blur-${ctx.shadowCounter++}`;
+    const stdDev = (layerBlurs[0].radius ?? 0) / 2;
+    ctx.defs.push(
+      `<filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%">` +
+        `<feGaussianBlur stdDeviation="${stdDev}" />` +
+        `</filter>`
+    );
+    return filterId;
+  }
 
   if (dropShadows.length === 0 && innerShadows.length === 0) {
     return undefined;
