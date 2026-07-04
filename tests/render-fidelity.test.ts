@@ -203,3 +203,37 @@ describe("gradient fills", () => {
     expect(svg).toContain('fill="rgb(255, 0, 0)"');
   });
 });
+
+describe("image fill transforms", () => {
+  const imageFill = {
+    fills: [{ type: "IMAGE", imageHash: "img1", visible: true }],
+  };
+  const images = new Map([["img1", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])]]);
+
+  it("renders mirrored image fills at their real bounds", () => {
+    const rect = base(30, "flipped", "RECTANGLE", {
+      ...imageFill,
+      width: 200,
+      height: 200,
+      transform: { m00: -1, m01: 0, m02: 232.5, m10: 0, m11: 1, m12: 0 },
+    });
+    const { svg } = renderScreen(rect, images, [], { includeImages: true });
+    const m = svg.match(/<image[^>]*x="([\d.-]+)"[^>]*width="([\d.-]+)"/);
+    expect(m).not.toBeNull();
+    // spans x 32.5..232.5 -> offset to origin = 0..200
+    expect(parseFloat(m![2])).toBeCloseTo(200, 1);
+  });
+
+  it("keeps the full matrix for rotated image fills", () => {
+    const s = Math.SQRT1_2;
+    const rect = base(31, "rotated", "RECTANGLE", {
+      ...imageFill,
+      width: 100,
+      height: 100,
+      transform: { m00: s, m01: -s, m02: 50, m10: s, m11: s, m12: 0 },
+    });
+    const { svg } = renderScreen(rect, images, [], { includeImages: true });
+    expect(svg).toMatch(/<image[^>]*transform="matrix\(/);
+    expect(svg).toMatch(/<image[^>]*width="100"/);
+  });
+});
