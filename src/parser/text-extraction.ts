@@ -9,7 +9,7 @@
 
 import type { FigNode, SceneNode, GUID } from "./types.js";
 import { formatGUID } from "./kiwi-parser.js";
-import { resolveInstanceChildren } from "./instance-resolver.js";
+import { extractInstanceContent, resolveInstanceChildren } from "./instance-resolver.js";
 
 export interface ExtractedText {
   /** Node name of the TEXT node */
@@ -53,21 +53,31 @@ export function collectTexts(
     if (
       node.type === "INSTANCE" &&
       (!children || children.length === 0) &&
-      sceneNode.symbolData?.symbolID &&
-      nodeIndex
+      sceneNode.symbolData?.symbolID
     ) {
       const symbolId = formatGUID(sceneNode.symbolData.symbolID as GUID);
-      const symbolNode = nodeIndex.get(symbolId);
+      const symbolNode = nodeIndex?.get(symbolId);
       if (symbolNode?.children && !symbolStack.has(symbolId)) {
         enteredSymbol = symbolId;
         nextInstanceName = node.name;
-        if (rawNodeIndex) {
+        if (rawNodeIndex && nodeIndex) {
           children =
             resolveInstanceChildren(node, symbolNode, rawNodeIndex, nodeIndex) ??
             (symbolNode.children as FigNode[]);
         } else {
           children = symbolNode.children as FigNode[];
         }
+      } else if (!symbolNode && rawNodeIndex) {
+        // The SYMBOL is not in this file (e.g. an external library
+        // component). Fall back to the instance's raw override text.
+        const rawNode = rawNodeIndex.get(formatGUID(node.guid));
+        const resolved = rawNode ? extractInstanceContent(node, rawNode) : null;
+        for (const item of resolved?.textContent ?? []) {
+          if (item.text) {
+            results.push({ name: node.name, content: item.text, instance: node.name });
+          }
+        }
+        return;
       }
     }
 

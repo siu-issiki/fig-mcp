@@ -100,6 +100,45 @@ describe("collectTexts", () => {
     ]);
   });
 
+  it("falls back to raw override text when the SYMBOL is not in the file", () => {
+    // e.g. an instance of an external library component
+    const instance = node("Library Button", "INSTANCE", {
+      symbolData: { symbolID: { sessionID: 999, localID: 1 } },
+    });
+    const root = node("Document", "DOCUMENT", {}, [instance]);
+    const nodeIndex = buildNodeIdIndex(root);
+    const guidKey = (g: unknown) => {
+      const { sessionID, localID } = g as { sessionID: number; localID: number };
+      return `${sessionID}:${localID}`;
+    };
+    const rawNodeIndex = new Map<string, Record<string, unknown>>([
+      [
+        guidKey(instance.guid),
+        {
+          guid: instance.guid,
+          symbolData: {
+            symbolID: { sessionID: 999, localID: 1 },
+            symbolOverrides: [
+              {
+                guidPath: { guids: [{ sessionID: 999, localID: 2 }] },
+                characters: "外部ライブラリのラベル",
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+
+    const texts = collectTexts(root, nodeIndex, rawNodeIndex);
+    expect(texts).toEqual([
+      {
+        name: "Library Button",
+        content: "外部ライブラリのラベル",
+        instance: "Library Button",
+      },
+    ]);
+  });
+
   it("guards against recursive symbol references", () => {
     const symbolGuid = { sessionID: 9, localID: 99 };
     const symbol = node("Recursive", "SYMBOL", {}, [
