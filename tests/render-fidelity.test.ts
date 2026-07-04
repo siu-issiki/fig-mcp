@@ -274,6 +274,19 @@ describe("effect and gradient composition", () => {
     expect(svg).toContain("feDropShadow");
   });
 
+  it("keeps shadow spread when chained with layer blur", () => {
+    const rect = base(44, "blur-spread", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [
+        { type: "FOREGROUND_BLUR", visible: true, radius: 20 },
+        { type: "DROP_SHADOW", visible: true, radius: 4, spread: 6, offset: { x: 0, y: 2 }, color: { r: 0, g: 0, b: 0, a: 0.25 } },
+      ],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("feGaussianBlur");
+    expect(svg).toContain('<feMorphology in="blurred" operator="dilate" radius="6"');
+  });
+
   it("rotated gradients follow the node transform via userSpaceOnUse", () => {
     const s = Math.SQRT1_2;
     const rect = base(43, "rot-grad", "RECTANGLE", {

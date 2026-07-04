@@ -215,11 +215,25 @@ function generateEffectFilters(
       // Chain: blur the node, then drop-shadow the blurred result, so
       // blur + shadow layers keep both effects.
       const e = dropShadows[0];
+      const spread = e.spread ?? 0;
+      const shadowStd = (e.radius ?? 0) / 2;
+      const dx = e.offset?.x ?? 0;
+      const dy = e.offset?.y ?? 0;
+      const shadowChain =
+        spread === 0
+          ? `<feDropShadow in="blurred" dx="${dx}" dy="${dy}" stdDeviation="${shadowStd}" flood-color="${colorToRgba(e.color)}" />`
+          : // Same morphology-based spread handling as the shadow-only path,
+            // but fed from the blurred source instead of SourceAlpha.
+            `<feMorphology in="blurred" operator="${spread > 0 ? "dilate" : "erode"}" radius="${Math.abs(spread)}" result="spreaded" />` +
+            `<feGaussianBlur in="spreaded" stdDeviation="${shadowStd}" result="shadowBlur" />` +
+            `<feOffset in="shadowBlur" dx="${dx}" dy="${dy}" result="offsetBlur" />` +
+            `<feFlood flood-color="${colorToRgba(e.color)}" result="color" />` +
+            `<feComposite in="color" in2="offsetBlur" operator="in" result="shadow" />` +
+            `<feMerge><feMergeNode in="shadow" /><feMergeNode in="blurred" /></feMerge>`;
       ctx.defs.push(
         `<filter id="${filterId}" x="-100%" y="-100%" width="300%" height="300%">` +
           `<feGaussianBlur in="SourceGraphic" stdDeviation="${stdDev}" result="blurred" />` +
-          `<feDropShadow in="blurred" dx="${e.offset?.x ?? 0}" dy="${e.offset?.y ?? 0}" ` +
-          `stdDeviation="${(e.radius ?? 0) / 2}" flood-color="${colorToRgba(e.color)}" />` +
+          shadowChain +
           `</filter>`
       );
       return filterId;
