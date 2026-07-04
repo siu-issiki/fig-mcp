@@ -6,11 +6,10 @@ Forked from [bilalba/fig-mcp](https://github.com/bilalba/fig-mcp) with substanti
 
 ## Installation
 
-No install step needed — `npx` fetches and builds directly from GitHub
-(the first run takes a minute; afterwards it runs from the npx cache):
+No install step needed — run straight from npm:
 
 ```bash
-npx -y github:siu-issiki/fig-mcp --help
+npx -y @siu-issiki/fig-mcp --help
 ```
 
 For development:
@@ -25,10 +24,10 @@ cd fig-mcp && npm install && npm run build
 ### Add to Claude
 
 ```bash
-claude mcp add fig-mcp -- npx -y github:siu-issiki/fig-mcp
+claude mcp add fig-mcp -- npx -y @siu-issiki/fig-mcp
 ```
 
-Or with a local clone:
+Alternatives — build from GitHub (`npx -y github:siu-issiki/fig-mcp`) or a local clone:
 
 ```bash
 claude mcp add fig-mcp -- node /path/to/fig-mcp/dist/index.js
