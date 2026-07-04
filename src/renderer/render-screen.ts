@@ -604,36 +604,19 @@ function renderRectangle(
 
       const imgW = node.width ?? 0;
       const imgH = node.height ?? 0;
-      const isAxisAlignedImage =
-        Math.abs(transform.b) < 0.01 && Math.abs(transform.c) < 0.01;
 
+      // Local coordinates with the full matrix: mirrored (negative-scale)
+      // images render flipped at their real bounds, and rotation/skew are
+      // preserved, without any per-case corner math.
       const attrs: string[] = [
+        `x="0"`,
+        `y="0"`,
+        `width="${imgW}"`,
+        `height="${imgH}"`,
+        `transform="matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})"`,
         `preserveAspectRatio="${preserve}"`,
         `href="data:${mimeType};base64,${base64}"`,
       ];
-      if (isAxisAlignedImage) {
-        // Transform both corners so mirrored nodes (negative scale, e.g.
-        // horizontally flipped images) render at their real bounds instead
-        // of extending away from the anchor. The mirroring itself is not
-        // applied to the pixels; position/size fidelity matters more here.
-        const c0 = transformPoint(0, 0, transform);
-        const c1 = transformPoint(imgW, imgH, transform);
-        attrs.push(
-          `x="${Math.min(c0.x, c1.x)}"`,
-          `y="${Math.min(c0.y, c1.y)}"`,
-          `width="${Math.abs(c1.x - c0.x)}"`,
-          `height="${Math.abs(c1.y - c0.y)}"`,
-        );
-      } else {
-        // Rotated/skewed: keep local coordinates and carry the full matrix
-        attrs.push(
-          `x="0"`,
-          `y="0"`,
-          `width="${imgW}"`,
-          `height="${imgH}"`,
-          `transform="matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})"`,
-        );
-      }
 
       if (node.opacity !== undefined && node.opacity < 1) {
         attrs.push(`opacity="${node.opacity}"`);

@@ -210,7 +210,7 @@ describe("image fill transforms", () => {
   };
   const images = new Map([["img1", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])]]);
 
-  it("renders mirrored image fills at their real bounds", () => {
+  it("renders mirrored image fills flipped at their real bounds", () => {
     const rect = base(30, "flipped", "RECTANGLE", {
       ...imageFill,
       width: 200,
@@ -218,10 +218,9 @@ describe("image fill transforms", () => {
       transform: { m00: -1, m01: 0, m02: 232.5, m10: 0, m11: 1, m12: 0 },
     });
     const { svg } = renderScreen(rect, images, [], { includeImages: true });
-    const m = svg.match(/<image[^>]*x="([\d.-]+)"[^>]*width="([\d.-]+)"/);
-    expect(m).not.toBeNull();
-    // spans x 32.5..232.5 -> offset to origin = 0..200
-    expect(parseFloat(m![2])).toBeCloseTo(200, 1);
+    // the negative scale is preserved so the bitmap is actually mirrored
+    expect(svg).toMatch(/<image[^>]*transform="matrix\(-1 0 0 1 /);
+    expect(svg).toMatch(/<image[^>]*width="200"/);
   });
 
   it("keeps the full matrix for rotated image fills", () => {
