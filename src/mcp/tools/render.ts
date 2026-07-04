@@ -43,7 +43,7 @@ export const renderTools: ToolModule = {
                   downloadFonts: {
                     type: "boolean",
                     description:
-                      "Opt in to downloading missing font families from Google Fonts (sends the design's font family names to Google; cached in ~/.cache/fig-mcp/fonts, default: false). Cached fonts are always used without network access.",
+                      "Download missing font families from Google Fonts (default: true; note this sends the design's font family names to Google). Files are cached in ~/.cache/fig-mcp/fonts and cached fonts are used without network access. Set false to keep rendering fully offline.",
                   },
                   fontDirs: {
                     type: "array",
@@ -145,11 +145,11 @@ export const renderTools: ToolModule = {
             rawNodeIndex,
           });
 
-          // Make design fonts available to resvg. Network fetch is opt-in:
-          // downloading would send the design's font family names to Google
-          // Fonts, so by default only already-cached fonts are used.
+          // Make design fonts available to resvg. Downloading sends the
+          // design's font family names to Google Fonts; pass
+          // downloadFonts:false to keep rendering fully offline.
           const { fontFiles } = await resolveFonts(result.usedFonts, {
-            download: options?.downloadFonts === true,
+            download: options?.downloadFonts !== false,
           });
 
           // Convert SVG to PNG
