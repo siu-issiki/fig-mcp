@@ -491,6 +491,8 @@ export function findNodesByName(node: FigNode, name: string): FigNode[] {
 /** Result of resolving a slash-separated node path */
 export interface NodePathResolution {
   node: FigNode | null;
+  /** Names of the matched nodes from root's child down to the target */
+  path: string[];
   /** Human-readable reason when resolution failed */
   error?: string;
 }
@@ -519,10 +521,11 @@ export function resolveNodePath(root: FigNode, nodePath: string): NodePathResolu
     .split("/")
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
-  if (parts.length === 0) return { node: root };
+  if (parts.length === 0) return { node: root, path: [] };
 
   let current = root;
   let index = 0;
+  const matchedNames: string[] = [];
 
   while (index < parts.length) {
     const children = (current.children ?? []) as FigNode[];
@@ -535,6 +538,7 @@ export function resolveNodePath(root: FigNode, nodePath: string): NodePathResolu
     if (children.length === 0) {
       return {
         node: null,
+        path: matchedNames,
         error: `"${current.name}" has no children (while resolving segment "${parts[index]}" of path "${nodePath}")`,
       };
     }
@@ -559,15 +563,17 @@ export function resolveNodePath(root: FigNode, nodePath: string): NodePathResolu
     if (!matched) {
       return {
         node: null,
+        path: matchedNames,
         error: `No child of "${current.name}" matches "${parts[index]}" (path "${nodePath}"). Children: ${describeCandidates()}`,
       };
     }
 
     current = matched;
+    matchedNames.push(matched.name);
     index += consumed;
   }
 
-  return { node: current };
+  return { node: current, path: matchedNames };
 }
 
 /**

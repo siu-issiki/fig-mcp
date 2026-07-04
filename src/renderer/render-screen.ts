@@ -325,9 +325,11 @@ function renderRectangle(
   images: Map<string, Uint8Array> | undefined,
   includeImages: boolean,
   output: string[],
+  includeFills = true,
+  includeStrokes = true,
 ): boolean {
-  const fills = getPaints(node as FigNode, "fills");
-  const strokes = getPaints(node as FigNode, "strokes");
+  const fills = includeFills ? getPaints(node as FigNode, "fills") : undefined;
+  const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
   const fillColor = paintToColor(fillPaint);
   const strokeColor = paintToColor(getVisiblePaint(strokes));
@@ -652,6 +654,8 @@ function renderNode(
         images,
         options.includeImages,
         nodeOutput,
+        options.includeFills,
+        options.includeStrokes,
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
@@ -671,6 +675,8 @@ function renderNode(
           images,
           options.includeImages,
           nodeOutput,
+          options.includeFills,
+          options.includeStrokes,
         );
       }
     }
