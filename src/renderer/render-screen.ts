@@ -270,6 +270,11 @@ function renderText(
   const textCase = (style as { textCase?: string } | undefined)?.textCase;
 
   ctx.usedFonts.add(`${rawFamily}|${fontWeight}|${fontStyle}`);
+  // Fallback families must also be resolvable to font files for the PNG pass
+  const mappedFamily = fontMap?.[rawFamily];
+  if (mappedFamily && mappedFamily !== rawFamily) {
+    ctx.usedFonts.add(`${mappedFamily}|${fontWeight}|${fontStyle}`);
+  }
 
   // Pure translations keep absolute coordinates. Rotated/scaled text uses
   // local coordinates and carries the full matrix in a transform attribute
@@ -391,6 +396,11 @@ function renderTextPath(
   const fontStyle = style?.fontStyle ?? "normal";
   const textCase = (style as { textCase?: string } | undefined)?.textCase;
   ctx.usedFonts.add(`${rawFamily}|${fontWeight}|${fontStyle}`);
+  // Fallback families must also be resolvable to font files for the PNG pass
+  const mappedPathFamily = fontMap?.[rawFamily];
+  if (mappedPathFamily && mappedPathFamily !== rawFamily) {
+    ctx.usedFonts.add(`${mappedPathFamily}|${fontWeight}|${fontStyle}`);
+  }
 
   const pathId = `textpath-${ctx.clipCounter++}`;
   ctx.defs.push(`<path id="${pathId}" d="${pathD}" fill="none" />`);

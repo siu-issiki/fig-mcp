@@ -56,6 +56,15 @@ describe("render fidelity", () => {
     ]);
   });
 
+  it("includes fontMap fallbacks in usedFonts so the PNG pass can load them", () => {
+    const node = base(15, "t", "TEXT", { characters: "abc", style: textStyle });
+    const { usedFonts } = renderScreen(node, undefined, [], {
+      fontMap: { AFSGillSBCond: "Oswald" },
+    });
+    expect(usedFonts).toContainEqual({ family: "AFSGillSBCond", weight: 700, style: "normal" });
+    expect(usedFonts).toContainEqual({ family: "Oswald", weight: 700, style: "normal" });
+  });
+
   it("adds fontMap fallbacks to font-family", () => {
     const node = base(4, "t", "TEXT", { characters: "abc", style: textStyle });
     const { svg } = renderScreen(node, undefined, [], {
