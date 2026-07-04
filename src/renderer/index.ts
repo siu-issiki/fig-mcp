@@ -11,6 +11,8 @@ export type { RenderScreenOptions, RenderScreenResult } from "./render-screen.js
 
 // Screenshot generation
 export { generateScreenshot } from "./screenshot.js";
+export { resolveFonts } from "./font-resolver.js";
+export type { ResolveFontsResult } from "./font-resolver.js";
 export type { ScreenshotOptions } from "./screenshot.js";
 
 // Types

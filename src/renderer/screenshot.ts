@@ -3,13 +3,17 @@ import { Resvg } from '@resvg/resvg-js';
 export interface ScreenshotOptions {
   maxWidth?: number;  // Default: 800
   maxHeight?: number; // Default: 600
+  /** Additional font files (ttf/otf) to load alongside system fonts */
+  fontFiles?: string[];
+  /** Additional directories to scan for fonts */
+  fontDirs?: string[];
 }
 
 export async function generateScreenshot(
   svgString: string,
   options: ScreenshotOptions = {}
 ): Promise<{ base64: string; width: number; height: number; mimeType: string }> {
-  const { maxWidth = 800, maxHeight = 600 } = options;
+  const { maxWidth = 800, maxHeight = 600, fontFiles = [], fontDirs = [] } = options;
 
   // Parse SVG dimensions from the string
   const widthMatch = svgString.match(/width="(\d+)"/);
@@ -24,6 +28,11 @@ export async function generateScreenshot(
     fitTo: {
       mode: 'width',
       value: Math.round(svgWidth * scale),
+    },
+    font: {
+      loadSystemFonts: true,
+      fontFiles,
+      fontDirs,
     },
   });
 

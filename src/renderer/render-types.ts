@@ -22,6 +22,8 @@ export type RenderContext = {
   clipCounter: number;
   shadowCounter: number;
   warnings: string[];
+  /** Fonts referenced while rendering, as "family|weight|style" */
+  usedFonts: Set<string>;
 };
 
 export type PathCommand = {
@@ -42,6 +44,14 @@ export type RenderScreenOptions = {
   nodeIndex?: Map<string, FigNode>;
   /** Raw node index for accessing symbolOverrides data. Required for INSTANCE content resolution. */
   rawNodeIndex?: Map<string, Record<string, unknown>>;
+  /** Fallback font families: maps a Figma font family to a locally available one */
+  fontMap?: Record<string, string>;
+};
+
+export type UsedFont = {
+  family: string;
+  weight: number;
+  style: string;
 };
 
 export type RenderScreenResult = {
@@ -49,9 +59,11 @@ export type RenderScreenResult = {
   width: number;
   height: number;
   warnings: string[];
+  /** Unique fonts referenced by the rendered SVG */
+  usedFonts: UsedFont[];
 };
 
-export const DEFAULT_RENDER_OPTIONS: Required<Omit<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex'>> & Pick<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex'> = {
+export const DEFAULT_RENDER_OPTIONS: Required<Omit<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex' | 'fontMap'>> & Pick<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex' | 'fontMap'> = {
   maxDepth: 200,
   includeText: true,
   includeFills: true,
@@ -62,6 +74,7 @@ export const DEFAULT_RENDER_OPTIONS: Required<Omit<RenderScreenOptions, 'nodeInd
   scale: 1,
   nodeIndex: undefined,
   rawNodeIndex: undefined,
+  fontMap: undefined,
 };
 
 export const IDENTITY_TRANSFORM: TransformMatrix = {

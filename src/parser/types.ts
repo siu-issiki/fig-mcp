@@ -336,6 +336,10 @@ export interface SceneNode extends BaseNode {
   vectorNetwork?: unknown;
   vectorPaths?: unknown;
   vectorData?: VectorData;
+  /** For TEXT_PATH: where along the path the text starts (0..1) */
+  textPathStart?: { tValue?: number; forward?: boolean };
+  /** For BOOLEAN_OPERATION: UNION | SUBTRACT | INTERSECT | XOR */
+  booleanOperation?: string;
   fillGeometry?: VectorPath[];
   strokeGeometry?: VectorPath[];
 

@@ -2,7 +2,7 @@
  * Rendering tools: raster screenshots and vector export.
  */
 
-import { renderScreen, generateScreenshot } from "../../renderer/index.js";
+import { renderScreen, generateScreenshot, resolveFonts } from "../../renderer/index.js";
 import { isVectorNode, exportVector } from "../../vector-export.js";
 import type { VectorFormat } from "../../vector-export.js";
 import { getOrParseFigFile } from "../file-cache.js";
@@ -40,6 +40,22 @@ export const renderTools: ToolModule = {
                   scale: { type: "number" },
                   maxWidth: { type: "number", description: "Maximum width in pixels (default: 800)" },
                   maxHeight: { type: "number", description: "Maximum height in pixels (default: 600)" },
+                  downloadFonts: {
+                    type: "boolean",
+                    description:
+                      "Opt in to downloading missing font families from Google Fonts (sends the design's font family names to Google; cached in ~/.cache/fig-mcp/fonts, default: false). Cached fonts are always used without network access.",
+                  },
+                  fontDirs: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Additional directories to scan for font files",
+                  },
+                  fontMap: {
+                    type: "object",
+                    additionalProperties: { type: "string" },
+                    description:
+                      'Fallback font families for fonts unavailable on this machine, e.g. {"AFSGillSBCond": "Gill Sans"}',
+                  },
                 },
               },
             },
@@ -121,14 +137,29 @@ export const renderTools: ToolModule = {
               typeof options?.includeShadows === "boolean" ? options.includeShadows : undefined,
             background: typeof options?.background === "string" ? options.background : undefined,
             scale: typeof options?.scale === "number" ? options.scale : undefined,
+            fontMap:
+              options?.fontMap && typeof options.fontMap === "object"
+                ? (options.fontMap as Record<string, string>)
+                : undefined,
             nodeIndex: nodeIdIndex,
             rawNodeIndex,
+          });
+
+          // Make design fonts available to resvg. Network fetch is opt-in:
+          // downloading would send the design's font family names to Google
+          // Fonts, so by default only already-cached fonts are used.
+          const { fontFiles } = await resolveFonts(result.usedFonts, {
+            download: options?.downloadFonts === true,
           });
 
           // Convert SVG to PNG
           const screenshot = await generateScreenshot(result.svg, {
             maxWidth: typeof options?.maxWidth === "number" ? options.maxWidth : undefined,
             maxHeight: typeof options?.maxHeight === "number" ? options.maxHeight : undefined,
+            fontFiles,
+            fontDirs: Array.isArray(options?.fontDirs)
+              ? (options.fontDirs as string[])
+              : undefined,
           });
 
           return {

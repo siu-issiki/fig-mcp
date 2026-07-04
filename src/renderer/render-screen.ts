@@ -49,6 +49,8 @@ import {
   isStrokedVector,
   renderStrokedVector,
   renderFilledVector,
+  renderStrokeGeometryFill,
+  buildCenterlinePathD,
 } from "./vector-renderer.js";
 
 // Re-export types for external consumers
@@ -214,10 +216,42 @@ function generateEffectFilters(
 // Text Rendering
 // ============================================================================
 
+/** Apply Figma textCase to a string */
+function applyTextCase(value: string, textCase: string | undefined): string {
+  switch (textCase) {
+    case "UPPER":
+      return value.toUpperCase();
+    case "LOWER":
+      return value.toLowerCase();
+    case "TITLE":
+      return value.replace(/\S+/g, (word) => word.charAt(0).toUpperCase() + word.slice(1));
+    default:
+      return value;
+  }
+}
+
+/** Quote a font family name for use inside a font-family list */
+function quoteFamily(family: string): string {
+  return family.includes(" ") ? `&apos;${escapeXml(family)}&apos;` : escapeXml(family);
+}
+
+/** Build a font-family attribute value with an optional fallback from fontMap */
+function buildFontFamilyValue(
+  family: string,
+  fontMap: Record<string, string> | undefined,
+): string {
+  const fallback = fontMap?.[family];
+  return fallback && fallback !== family
+    ? `${quoteFamily(family)}, ${quoteFamily(fallback)}`
+    : escapeXml(family);
+}
+
 function renderText(
   node: SceneNode,
   transform: TransformMatrix,
   output: string[],
+  ctx: RenderContext,
+  fontMap?: Record<string, string>,
 ): boolean {
   const text = node.characters;
   if (!text) return false;
@@ -227,13 +261,30 @@ function renderText(
 
   const style = node.style as TextStyle | undefined;
   const fontSize = style?.fontSize ?? 14;
-  const fontFamily = escapeXml(style?.fontFamily ?? "Inter");
+  const rawFamily = style?.fontFamily ?? "Inter";
+  const fontFamily = buildFontFamilyValue(rawFamily, fontMap);
   const fontWeight = style?.fontWeight ?? 400;
   const fontStyle = style?.fontStyle ?? "normal";
   const defaultLineHeight = style?.lineHeightPx ?? fontSize * 1.2;
   const letterSpacing = style?.letterSpacing ?? 0;
+  const textCase = (style as { textCase?: string } | undefined)?.textCase;
 
-  const pos = transformPoint(0, 0, transform);
+  ctx.usedFonts.add(`${rawFamily}|${fontWeight}|${fontStyle}`);
+  // Fallback families must also be resolvable to font files for the PNG pass
+  const mappedFamily = fontMap?.[rawFamily];
+  if (mappedFamily && mappedFamily !== rawFamily) {
+    ctx.usedFonts.add(`${mappedFamily}|${fontWeight}|${fontStyle}`);
+  }
+
+  // Pure translations keep absolute coordinates. Rotated/scaled text uses
+  // local coordinates and carries the full matrix in a transform attribute
+  // so the rotation is preserved (e.g. vertical ticket-stub text).
+  const isTranslationOnly =
+    Math.abs(transform.b) < 1e-6 &&
+    Math.abs(transform.c) < 1e-6 &&
+    Math.abs(transform.a - 1) < 1e-6 &&
+    Math.abs(transform.d - 1) < 1e-6;
+  const pos = isTranslationOnly ? transformPoint(0, 0, transform) : { x: 0, y: 0 };
 
   // Handle text alignment
   const anchor = style?.textAlignHorizontal?.toLowerCase() ?? "left";
@@ -258,6 +309,12 @@ function renderText(
     `dominant-baseline="text-before-edge"`,
     `text-anchor="${textAnchor}"`,
   ];
+
+  if (!isTranslationOnly) {
+    attrs.push(
+      `transform="matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})"`,
+    );
+  }
 
   if (letterSpacing !== 0) {
     attrs.push(`letter-spacing="${letterSpacing}"`);
@@ -284,11 +341,7 @@ function renderText(
           baseline.firstCharacter,
           baseline.endCharacter,
         );
-        const safeLineText = escapeXml(lineText.trim()); // Trim to remove trailing spaces/newlines
-
-        // Calculate Y position from baseline data
-        // lineY gives us the offset from the top of the text block
-        const lineY = baseline.lineY;
+        const safeLineText = escapeXml(applyTextCase(lineText.trim(), textCase)); // Trim to remove trailing spaces/newlines
 
         if (index === 0) {
           return `<tspan x="${baseX}" dy="0">${safeLineText}</tspan>`;
@@ -301,7 +354,7 @@ function renderText(
       .join("");
   } else {
     // Fallback: split by newlines (for text with explicit line breaks)
-    const safeText = escapeXml(text);
+    const safeText = escapeXml(applyTextCase(text, textCase));
     const lines = safeText.split(/\r?\n/);
     spans = lines
       .map((line, index) => {
@@ -312,6 +365,67 @@ function renderText(
   }
 
   output.push(`<text ${attrs.join(" ")}>${spans}</text>`);
+  return true;
+}
+
+/**
+ * Render a TEXT_PATH node (text laid out along a vector path, e.g. circular
+ * stamp text) using an SVG <textPath>.
+ */
+function renderTextPath(
+  node: SceneNode,
+  transform: TransformMatrix,
+  blobs: BlobEntry[] | undefined,
+  ctx: RenderContext,
+  output: string[],
+  fontMap?: Record<string, string>,
+): boolean {
+  const text = node.characters;
+  if (!text) return false;
+
+  const pathD = buildCenterlinePathD(node, transform, blobs, ctx);
+  if (!pathD) return false;
+
+  const fills = getPaints(node as FigNode, "fills");
+  const fillColor = paintToColor(getVisiblePaint(fills)) ?? "#000";
+
+  const style = node.style as TextStyle | undefined;
+  const fontSize = style?.fontSize ?? 12;
+  const rawFamily = style?.fontFamily ?? "Inter";
+  const fontWeight = style?.fontWeight ?? 400;
+  const fontStyle = style?.fontStyle ?? "normal";
+  const textCase = (style as { textCase?: string } | undefined)?.textCase;
+  ctx.usedFonts.add(`${rawFamily}|${fontWeight}|${fontStyle}`);
+  // Fallback families must also be resolvable to font files for the PNG pass
+  const mappedPathFamily = fontMap?.[rawFamily];
+  if (mappedPathFamily && mappedPathFamily !== rawFamily) {
+    ctx.usedFonts.add(`${mappedPathFamily}|${fontWeight}|${fontStyle}`);
+  }
+
+  const pathId = `textpath-${ctx.clipCounter++}`;
+  ctx.defs.push(`<path id="${pathId}" d="${pathD}" fill="none" />`);
+
+  // Known limitation: textPathStart.forward (reversed path direction) is
+  // not applied — SVG textPath cannot flip direction without reversing the
+  // path itself, so reversed circular text renders mirrored along the arc.
+  const tValue = node.textPathStart?.tValue ?? 0;
+  const startOffset = `${Math.round((((tValue % 1) + 1) % 1) * 100)}%`;
+
+  const attrs = [
+    `font-family="${buildFontFamilyValue(rawFamily, fontMap)}"`,
+    `font-size="${fontSize}"`,
+    `font-weight="${fontWeight}"`,
+    `font-style="${fontStyle}"`,
+    `fill="${fillColor}"`,
+  ];
+  if (node.opacity !== undefined && node.opacity < 1) {
+    attrs.push(`opacity="${node.opacity}"`);
+  }
+
+  const content = escapeXml(applyTextCase(text, textCase));
+  output.push(
+    `<text ${attrs.join(" ")}><textPath href="#${pathId}" startOffset="${startOffset}">${content}</textPath></text>`,
+  );
   return true;
 }
 
@@ -409,6 +523,9 @@ function renderRectangle(
     if (strokeColor) {
       attrs.push(`stroke="${strokeColor}"`);
       attrs.push(`stroke-width="${node.strokeWeight ?? 1}"`);
+      if (node.strokeDashes?.length) {
+        attrs.push(`stroke-dasharray="${node.strokeDashes.join(" ")}"`);
+      }
     }
 
     const cornerRadius =
@@ -439,6 +556,9 @@ function renderRectangle(
     if (strokeColor) {
       attrs.push(`stroke="${strokeColor}"`);
       attrs.push(`stroke-width="${node.strokeWeight ?? 1}"`);
+      if (node.strokeDashes?.length) {
+        attrs.push(`stroke-dasharray="${node.strokeDashes.join(" ")}"`);
+      }
     }
     if (node.opacity !== undefined && node.opacity < 1) {
       attrs.push(`opacity="${node.opacity}"`);
@@ -462,7 +582,7 @@ const VECTOR_TYPES = new Set([
   "ELLIPSE",
   "BOOLEAN_OPERATION",
 ]);
-const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE", "SYMBOL", "TEXT_PATH"]);
+const CONTAINER_TYPES = new Set(["FRAME", "GROUP", "COMPONENT", "INSTANCE", "SYMBOL"]);
 
 /**
  * Render a mask node to create a clipPath definition.
@@ -597,7 +717,7 @@ function renderInstanceContent(
   return rendered;
 }
 
-type ResolvedOptions = Required<Omit<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex'>> & Pick<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex'>;
+type ResolvedOptions = Required<Omit<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex' | 'fontMap'>> & Pick<RenderScreenOptions, 'nodeIndex' | 'rawNodeIndex' | 'fontMap'>;
 
 function renderNode(
   node: FigNode,
@@ -625,7 +745,11 @@ function renderNode(
 
   // Handle different node types
   if (node.type === "TEXT" && options.includeText) {
-    rendered = renderText(sceneNode, worldTransform, nodeOutput);
+    rendered = renderText(sceneNode, worldTransform, nodeOutput, ctx, options.fontMap);
+  } else if (node.type === "TEXT_PATH") {
+    if (options.includeText) {
+      rendered = renderTextPath(sceneNode, worldTransform, blobs, ctx, nodeOutput, options.fontMap);
+    }
   } else if (VECTOR_TYPES.has(node.type ?? "")) {
     if (options.includeStrokes && isStrokedVector(sceneNode)) {
       rendered = renderStrokedVector(
@@ -662,6 +786,7 @@ function renderNode(
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
+    const hasStrokeGeometry = Boolean(sceneNode.strokeGeometry?.length);
     if (options.includeFills || options.includeImages) {
       const fills = getPaints(node, "fills");
       const fillPaint = getVisiblePaint(fills);
@@ -672,6 +797,7 @@ function renderNode(
         sceneNode.width &&
         sceneNode.height
       ) {
+        // Strokes are rendered from strokeGeometry below when available
         rendered = renderRectangle(
           sceneNode,
           worldTransform,
@@ -679,9 +805,41 @@ function renderNode(
           options.includeImages,
           nodeOutput,
           options.includeFills,
-          options.includeStrokes,
+          false,
         );
       }
+    }
+    if (options.includeStrokes) {
+      // Container strokes prefer Figma's precomputed strokeGeometry: it
+      // carries dash segments and collapses to nothing for effectively
+      // invisible borders, which a synthesized rect outline would get wrong.
+      let strokeRendered = false;
+      if (hasStrokeGeometry) {
+        strokeRendered = renderStrokeGeometryFill(
+          sceneNode,
+          worldTransform,
+          blobs,
+          ctx,
+          nodeOutput,
+        );
+      }
+      // Fall back to a synthesized rectangular border when there is no
+      // usable geometry (missing, or its blobs could not be decoded).
+      if (!strokeRendered && sceneNode.width && sceneNode.height) {
+        const strokeColor = paintToColor(getVisiblePaint(getPaints(node, "strokes")));
+        if (strokeColor) {
+          strokeRendered = renderRectangle(
+            sceneNode,
+            worldTransform,
+            images,
+            false,
+            nodeOutput,
+            false,
+            true,
+          );
+        }
+      }
+      rendered = rendered || strokeRendered;
     }
   }
 
@@ -710,6 +868,21 @@ function renderNode(
         }
       } else {
         resolvedChildren = symbolNode.children as FigNode[];
+      }
+    }
+  }
+
+  // BOOLEAN_OPERATION: when the combined geometry rendered, drawing the
+  // operand children too would double-paint. Without geometry, approximate
+  // SUBTRACT/INTERSECT/XOR with the base operand only (drawing subtrahends
+  // literally paints shapes the operation was meant to remove).
+  if (node.type === "BOOLEAN_OPERATION" && resolvedChildren && resolvedChildren.length > 0) {
+    if (rendered) {
+      resolvedChildren = undefined;
+    } else {
+      const op = sceneNode.booleanOperation;
+      if (op && op !== "UNION") {
+        resolvedChildren = [resolvedChildren[0] as FigNode];
       }
     }
   }
@@ -903,14 +1076,14 @@ export function renderScreen(
     Object.entries(options).filter(([, value]) => value !== undefined),
   ) as RenderScreenOptions;
   const resolved = { ...DEFAULT_RENDER_OPTIONS, ...definedOptions };
-  const ctx: RenderContext = { defs: [], clipCounter: 0, shadowCounter: 0, warnings: [] };
+  const ctx: RenderContext = { defs: [], clipCounter: 0, shadowCounter: 0, warnings: [], usedFonts: new Set() };
 
   // Calculate bounds
   const bounds = collectBounds(node, IDENTITY_TRANSFORM);
 
   if (!bounds) {
     ctx.warnings.push("No bounds found for node subtree");
-    return { svg: "", width: 0, height: 0, warnings: ctx.warnings };
+    return { svg: "", width: 0, height: 0, warnings: ctx.warnings, usedFonts: [] };
   }
 
   const width = Math.max(1, bounds.maxX - bounds.minX);
@@ -946,5 +1119,10 @@ export function renderScreen(
     `<svg xmlns="http://www.w3.org/2000/svg" width="${scaledWidth}" height="${scaledHeight}" viewBox="0 0 ${width} ${height}">` +
     `${defs}${output.join("")}</svg>`;
 
-  return { svg, width, height, warnings: ctx.warnings };
+  const usedFonts = Array.from(ctx.usedFonts).map((key) => {
+    const [family, weight, style] = key.split("|");
+    return { family, weight: Number(weight) || 400, style };
+  });
+
+  return { svg, width, height, warnings: ctx.warnings, usedFonts };
 }
