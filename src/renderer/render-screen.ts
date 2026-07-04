@@ -230,19 +230,19 @@ function applyTextCase(value: string, textCase: string | undefined): string {
   }
 }
 
-/** Quote a font family name for use inside a font-family list */
-function quoteFamily(family: string): string {
-  return family.includes(" ") ? `&apos;${escapeXml(family)}&apos;` : escapeXml(family);
-}
-
-/** Build a font-family attribute value with an optional fallback from fontMap */
+/**
+ * Build a font-family attribute value with an optional fallback from fontMap.
+ * Family names are deliberately NOT quoted: resvg's font-family list parser
+ * does not strip quotes, so a quoted fallback never matches. Unquoted names
+ * with spaces are valid CSS and resolve correctly.
+ */
 function buildFontFamilyValue(
   family: string,
   fontMap: Record<string, string> | undefined,
 ): string {
   const fallback = fontMap?.[family];
   return fallback && fallback !== family
-    ? `${quoteFamily(family)}, ${quoteFamily(fallback)}`
+    ? `${escapeXml(family)}, ${escapeXml(fallback)}`
     : escapeXml(family);
 }
 

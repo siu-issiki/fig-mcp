@@ -70,7 +70,8 @@ describe("render fidelity", () => {
     const { svg } = renderScreen(node, undefined, [], {
       fontMap: { AFSGillSBCond: "Gill Sans" },
     });
-    expect(svg).toContain("font-family=\"AFSGillSBCond, &apos;Gill Sans&apos;\"");
+    // Unquoted on purpose: resvg's list parser does not strip quotes
+    expect(svg).toContain('font-family="AFSGillSBCond, Gill Sans"');
   });
 
   it("renders frame borders from strokeGeometry (dashes are baked in)", () => {
