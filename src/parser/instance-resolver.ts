@@ -291,6 +291,11 @@ function buildOverrideData(
 function applyOverrideToNode(node: SceneNode, override: OverrideData): void {
   if (typeof override.characters === "string") {
     node.characters = override.characters;
+    // Without replacement layout data, the symbol's derived glyph/baseline
+    // data would render the DEFAULT text instead of this override.
+    if (!override.derivedTextData) {
+      node.derivedTextData = undefined;
+    }
   }
   if (override.fillPaints) {
     node.fills = override.fillPaints as Paint[];

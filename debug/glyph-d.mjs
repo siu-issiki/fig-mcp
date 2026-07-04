@@ -1,0 +1,13 @@
+import * as fs from "fs";
+import { parseFigFile, buildRawNodeIndex } from "../dist/parser/index.js";
+import { decodePathCommands } from "../dist/renderer/vector-renderer.js";
+import { buildSvgPath } from "../dist/renderer/render-utils.js";
+const parsed = await parseFigFile("/Users/siu/Downloads/toritori2.0.fig");
+const raw = buildRawNodeIndex(parsed.rawMessage);
+const n = raw.get("1:4296");
+const ctx = { defs: [], clipCounter: 0, shadowCounter: 0, warnings: [], usedFonts: new Set() };
+const g = n.derivedTextData.glyphs[0];
+const cmds = decodePathCommands(g.commandsBlob, parsed.blobs, ctx);
+const t = { a: g.fontSize, b: 0, c: 0, d: -g.fontSize, e: g.position.x, f: g.position.y };
+const d = buildSvgPath(cmds, t);
+console.log("d:", d ? d.slice(0, 300) : d);

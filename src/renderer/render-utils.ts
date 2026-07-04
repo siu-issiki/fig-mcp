@@ -103,16 +103,20 @@ export function computeCommandBounds(
  */
 export function buildSvgPath(commands: PathCommand[], transform: TransformMatrix): string {
   const parts: string[] = [];
+  let started = false;
 
   for (const { cmd, values } of commands) {
     switch (cmd) {
       case 0: // Close
-        parts.push("Z");
+        // A path may not begin with Z (glyph blobs start with one);
+        // emitting it would make the whole path invalid.
+        if (started) parts.push("Z");
         break;
       case 1: {
         // Move
         const p = transformPoint(values[0] ?? 0, values[1] ?? 0, transform);
         parts.push(`M ${p.x} ${p.y}`);
+        started = true;
         break;
       }
       case 2: {

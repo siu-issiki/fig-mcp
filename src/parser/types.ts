@@ -254,9 +254,20 @@ export interface TextBaseline {
   endCharacter: number;       // Index after last character on this line
 }
 
+/** A glyph outline embedded in the file (em-square units, y-up from baseline) */
+export interface TextGlyph {
+  commandsBlob?: number;      // Blob index holding the outline path commands
+  position?: Vector;          // Baseline position of the glyph in node space
+  fontSize?: number;          // Scale factor from em units to node space
+  rotation?: number;          // Rotation in radians (e.g. text on a path)
+  firstCharacter?: number;    // Index of the character this glyph renders
+  advance?: number;           // Advance width in em units
+}
+
 export interface DerivedTextData {
   layoutSize: Vector;         // Total size of the text block
   baselines: TextBaseline[];  // Per-line layout info for text wrapping
+  glyphs?: TextGlyph[];       // Embedded glyph outlines (render without fonts)
 }
 
 // Base node properties that all nodes share

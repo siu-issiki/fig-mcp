@@ -48,7 +48,7 @@ describe.skipIf(!hasFig)("integration: real .fig file", () => {
     expect(png.length).toBeGreaterThan(20_000);
   });
 
-  it("renders circular stamp text via textPath", async () => {
+  it("renders circular stamp text from embedded glyph outlines", async () => {
     const { parseFigFile, buildNodeIdIndex, buildRawNodeIndex } = await import(
       "../src/parser/index.js"
     );
@@ -65,8 +65,33 @@ describe.skipIf(!hasFig)("integration: real .fig file", () => {
       nodeIndex: nodeIdIndex,
       rawNodeIndex,
     });
-    expect(result.svg).toContain("<textPath");
-    expect(result.svg).toContain("KANAGAWA");
+    // TEXT_PATH letters render as filled glyph outline paths (exact
+    // letterforms with per-glyph rotation), not as <text>/<textPath>
+    expect(result.svg).toContain('<g fill="');
+    expect((result.svg.match(/<path /g) ?? []).length).toBeGreaterThan(20);
+    expect(result.svg).not.toContain("<textPath");
+  });
+
+  it("renders heading text from embedded glyphs (font-independent)", async () => {
+    const { parseFigFile, buildNodeIdIndex, buildRawNodeIndex } = await import(
+      "../src/parser/index.js"
+    );
+    const { renderScreen } = await import("../src/renderer/render-screen.js");
+    const parsed = await parseFigFile(FIG);
+    const nodeIdIndex = buildNodeIdIndex(parsed.document);
+    const rawNodeIndex = parsed.rawMessage
+      ? buildRawNodeIndex(parsed.rawMessage)
+      : new Map<string, Record<string, unknown>>();
+    // TEXT "HAKONE" (AFSGillSBCond, not installed on any machine we run on)
+    const heading = nodeIdIndex.get("1:4296");
+    expect(heading).toBeDefined();
+    const result = renderScreen(heading!, parsed.images, parsed.blobs ?? [], {
+      nodeIndex: nodeIdIndex,
+      rawNodeIndex,
+    });
+    // 6 letters -> 6 glyph outline paths, no <text> fallback
+    expect((result.svg.match(/<path /g) ?? []).length).toBe(6);
+    expect(result.svg).not.toContain("<text ");
   });
 
   it("rejects tool calls with missing required arguments", async () => {

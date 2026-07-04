@@ -51,7 +51,9 @@ import {
   renderFilledVector,
   renderStrokeGeometryFill,
   buildCenterlinePathD,
+  decodePathCommands,
 } from "./vector-renderer.js";
+import { buildSvgPath } from "./render-utils.js";
 
 // Re-export types for external consumers
 export type {
@@ -246,13 +248,80 @@ function buildFontFamilyValue(
     : escapeXml(family);
 }
 
+/**
+ * Render text from the glyph outlines embedded in the file
+ * (derivedTextData.glyphs). This reproduces the exact letterforms of the
+ * original font without needing it installed. Returns false when no usable
+ * glyph data exists so callers can fall back to <text> rendering.
+ */
+function renderTextGlyphs(
+  node: SceneNode,
+  transform: TransformMatrix,
+  blobs: BlobEntry[] | undefined,
+  ctx: RenderContext,
+  output: string[],
+): boolean {
+  const glyphs = node.derivedTextData?.glyphs;
+  if (!glyphs?.length || !blobs?.length) return false;
+
+  const fills = getPaints(node as FigNode, "fills");
+  const fillColor = paintToColor(getVisiblePaint(fills)) ?? "#000";
+
+  const paths: string[] = [];
+  for (const glyph of glyphs) {
+    if (typeof glyph.commandsBlob !== "number" || !glyph.position) continue;
+    const commands = decodePathCommands(glyph.commandsBlob, blobs, ctx);
+    if (!commands) continue;
+
+    const fontSize = glyph.fontSize ?? 12;
+    // Glyph outlines are in em units, y-up from the baseline: scale by
+    // fontSize with a y-flip, optionally rotate, then move to the baseline
+    // position (multiplyTransforms applies the child transform first).
+    let local: TransformMatrix = {
+      a: fontSize,
+      b: 0,
+      c: 0,
+      d: -fontSize,
+      e: glyph.position.x,
+      f: glyph.position.y,
+    };
+    if (glyph.rotation) {
+      const cos = Math.cos(glyph.rotation);
+      const sin = Math.sin(glyph.rotation);
+      local = multiplyTransforms(
+        { a: cos, b: sin, c: -sin, d: cos, e: glyph.position.x, f: glyph.position.y },
+        { a: fontSize, b: 0, c: 0, d: -fontSize, e: 0, f: 0 },
+      );
+    }
+    const pathD = buildSvgPath(commands, multiplyTransforms(transform, local));
+    if (pathD) paths.push(pathD);
+  }
+
+  if (paths.length === 0) return false;
+
+  const opacityAttr =
+    node.opacity !== undefined && node.opacity < 1 ? ` opacity="${node.opacity}"` : "";
+  output.push(
+    `<g fill="${fillColor}" fill-rule="nonzero"${opacityAttr}>` +
+      paths.map((d) => `<path d="${d}" />`).join("") +
+      `</g>`,
+  );
+  return true;
+}
+
 function renderText(
   node: SceneNode,
   transform: TransformMatrix,
   output: string[],
   ctx: RenderContext,
   fontMap?: Record<string, string>,
+  blobs?: BlobEntry[],
 ): boolean {
+  // Prefer embedded glyph outlines: exact letterforms without the font
+  if (renderTextGlyphs(node, transform, blobs, ctx, output)) {
+    return true;
+  }
+
   const text = node.characters;
   if (!text) return false;
 
@@ -382,6 +451,12 @@ function renderTextPath(
 ): boolean {
   const text = node.characters;
   if (!text) return false;
+
+  // Embedded glyph outlines carry per-glyph rotation and reproduce the
+  // exact circular layout (including reversed arcs) without the font.
+  if (renderTextGlyphs(node, transform, blobs, ctx, output)) {
+    return true;
+  }
 
   const pathD = buildCenterlinePathD(node, transform, blobs, ctx);
   if (!pathD) return false;
@@ -745,7 +820,7 @@ function renderNode(
 
   // Handle different node types
   if (node.type === "TEXT" && options.includeText) {
-    rendered = renderText(sceneNode, worldTransform, nodeOutput, ctx, options.fontMap);
+    rendered = renderText(sceneNode, worldTransform, nodeOutput, ctx, options.fontMap, blobs);
   } else if (node.type === "TEXT_PATH") {
     if (options.includeText) {
       rendered = renderTextPath(sceneNode, worldTransform, blobs, ctx, nodeOutput, options.fontMap);
