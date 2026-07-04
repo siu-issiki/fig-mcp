@@ -488,6 +488,88 @@ export function findNodesByName(node: FigNode, name: string): FigNode[] {
   return results;
 }
 
+/** Result of resolving a slash-separated node path */
+export interface NodePathResolution {
+  node: FigNode | null;
+  /** Human-readable reason when resolution failed */
+  error?: string;
+}
+
+/** Normalize a name for path comparison: collapse whitespace around "/" and lowercase */
+function normalizePathName(value: string): string {
+  return value
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .join("/")
+    .toLowerCase();
+}
+
+/**
+ * Resolve a slash-separated path of node names (e.g. "Page 1/Frame/Title").
+ *
+ * Node names may themselves contain "/" (e.g. "icon/open_in_new"), so at each
+ * level the longest run of remaining path segments that exactly matches a
+ * child name is preferred, falling back to a single-segment substring match.
+ * Returns an error (with candidate child names) instead of silently ignoring
+ * segments that don't match.
+ */
+export function resolveNodePath(root: FigNode, nodePath: string): NodePathResolution {
+  const parts = nodePath
+    .split("/")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) return { node: root };
+
+  let current = root;
+  let index = 0;
+
+  while (index < parts.length) {
+    const children = (current.children ?? []) as FigNode[];
+    const describeCandidates = () =>
+      children
+        .slice(0, 20)
+        .map((c) => `"${c.name}" (${c.type})`)
+        .join(", ") + (children.length > 20 ? `, … ${children.length - 20} more` : "");
+
+    if (children.length === 0) {
+      return {
+        node: null,
+        error: `"${current.name}" has no children (while resolving segment "${parts[index]}" of path "${nodePath}")`,
+      };
+    }
+
+    let matched: FigNode | undefined;
+    let consumed = 0;
+
+    // Prefer the longest exact match so names containing "/" resolve correctly
+    for (let take = parts.length - index; take >= 1 && !matched; take--) {
+      const candidate = normalizePathName(parts.slice(index, index + take).join("/"));
+      matched = children.find((c) => normalizePathName(c.name) === candidate);
+      if (matched) consumed = take;
+    }
+
+    // Fall back to a single-segment substring match
+    if (!matched) {
+      const needle = parts[index].toLowerCase();
+      matched = children.find((c) => c.name.toLowerCase().includes(needle));
+      consumed = 1;
+    }
+
+    if (!matched) {
+      return {
+        node: null,
+        error: `No child of "${current.name}" matches "${parts[index]}" (path "${nodePath}"). Children: ${describeCandidates()}`,
+      };
+    }
+
+    current = matched;
+    index += consumed;
+  }
+
+  return { node: current };
+}
+
 /**
  * Count nodes by type
  */

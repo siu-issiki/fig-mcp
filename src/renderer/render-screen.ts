@@ -888,7 +888,12 @@ export function renderScreen(
   blobs?: BlobEntry[],
   options: RenderScreenOptions = {},
 ): RenderScreenResult {
-  const resolved = { ...DEFAULT_RENDER_OPTIONS, ...options };
+  // Strip undefined values so callers passing explicit `undefined`
+  // (e.g. `{ includeText: undefined }`) don't clobber the defaults.
+  const definedOptions = Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined),
+  ) as RenderScreenOptions;
+  const resolved = { ...DEFAULT_RENDER_OPTIONS, ...definedOptions };
   const ctx: RenderContext = { defs: [], clipCounter: 0, shadowCounter: 0, warnings: [] };
 
   // Calculate bounds

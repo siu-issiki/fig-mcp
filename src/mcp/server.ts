@@ -9,6 +9,8 @@
  * - Inspecting schema/raw data
  */
 
+import * as fs from "fs";
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -37,6 +39,8 @@ import {
   buildRawNodeIndex,
   extractInstanceContent,
   getInstanceTextList,
+  resolveNodePath,
+  collectTexts,
 } from "../parser/index.js";
 import type { FigNode } from "../parser/types.js";
 import { renderScreen, generateScreenshot } from "../renderer/index.js";
@@ -279,6 +283,11 @@ function collectNodesWithFills(
  * Get or parse a fig file with caching
  */
 export async function getOrParseFigFile(filePath: string) {
+  if (!fs.existsSync(filePath)) {
+    throw new Error(
+      `File not found: ${filePath}. Provide an absolute path to a .fig file exported via Figma's "Save local copy…".`
+    );
+  }
   if (!fileCache.has(filePath)) {
     const parsed = await parseFigFile(filePath);
     const nodeIdIndex = buildNodeIdIndex(parsed.document);
@@ -316,10 +325,7 @@ export function createServer(): Server {
     }
   );
 
-  // List available tools
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
+  const toolDefinitions = [
         {
           name: "parse_fig_file",
           description:
@@ -811,13 +817,49 @@ export function createServer(): Server {
             required: ["filePath", "nodeId", "format"],
           },
         },
-      ],
-    };
+  ];
+
+  // List available tools
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    return { tools: toolDefinitions };
   });
+
+  const requiredArgsByTool = new Map<string, string[]>(
+    toolDefinitions.map((tool) => [
+      tool.name,
+      (tool.inputSchema as { required?: string[] }).required ?? [],
+    ]),
+  );
 
   // Handle tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+
+    // Validate required arguments up front so handlers can assume they exist,
+    // and callers get a clear message instead of an internal TypeError.
+    const requiredArgs = requiredArgsByTool.get(name);
+    if (requiredArgs) {
+      const argRecord = (args ?? {}) as Record<string, unknown>;
+      const missing = requiredArgs.filter((key) => {
+        const value = argRecord[key];
+        return (
+          value === undefined ||
+          value === null ||
+          (typeof value === "string" && value.trim() === "")
+        );
+      });
+      if (missing.length > 0) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `Missing required argument(s) for ${name}: ${missing.join(", ")}. Required: ${requiredArgs.join(", ")}.`,
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
 
     try {
       switch (name) {
@@ -1273,48 +1315,29 @@ export function createServer(): Server {
 
           let startNode: FigNode = document;
           if (nodePath) {
-            const pathParts = nodePath.split("/").filter((p) => p.length > 0);
-            for (const part of pathParts) {
-              if (!startNode?.children) break;
-              const found = startNode.children.find((c) =>
-                (c as FigNode).name
-                  .toLowerCase()
-                  .includes(part.toLowerCase())
-              ) as FigNode | undefined;
-              if (found) startNode = found;
+            const resolution = resolveNodePath(document, nodePath);
+            if (!resolution.node) {
+              return {
+                content: [{ type: "text", text: `Error: ${resolution.error}` }],
+                isError: true,
+              };
             }
+            startNode = resolution.node;
           }
 
-          // Get text from TEXT nodes
-          const textNodes = findNodesByType(startNode, "TEXT");
-          const texts = textNodes.map((n) => ({
-            name: n.name,
-            content: (n as unknown as { characters?: string }).characters,
-          }));
-
-          // Also extract text from INSTANCE nodes (symbolOverrides)
-          const instanceTexts: Array<{ name: string; instanceOf: string; content: string[] }> = [];
-          const instanceNodes = findNodesByType(startNode, "INSTANCE");
-          for (const instNode of instanceNodes) {
-            const nodeId = formatGUID(instNode.guid);
-            const rawNode = rawNodeIndex.get(nodeId);
-            if (rawNode) {
-              const resolved = extractInstanceContent(instNode, rawNode);
-              if (resolved && resolved.textContent.length > 0) {
-                instanceTexts.push({
-                  name: instNode.name,
-                  instanceOf: resolved.symbolId,
-                  content: getInstanceTextList(resolved),
-                });
-              }
-            }
-          }
+          // Collect text, expanding INSTANCE nodes into their SYMBOL
+          // definitions (with overrides) so component text is included.
+          const texts = collectTexts(startNode, nodeIdIndex, rawNodeIndex);
 
           return {
             content: [
               {
                 type: "text",
-                text: JSON.stringify({ texts, instanceTexts }, null, 2),
+                text: JSON.stringify(
+                  { scope: startNode.name, count: texts.length, texts },
+                  null,
+                  2
+                ),
               },
             ],
           };
