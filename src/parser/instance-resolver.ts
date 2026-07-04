@@ -476,20 +476,22 @@ export function resolveInstanceChildren(
   const instanceRaw = rawNodeIndex.get(formatGUID(instance.guid));
   if (!instanceRaw) return null;
 
+  // Overrides can come from two independent sources: symbolOverrides
+  // (guid-path based) and top-level componentPropAssignments. An instance
+  // customized only via component props has no symbolOverrides, so neither
+  // source alone may be treated as required.
   const overrideData = buildOverrideData(instance, instanceRaw);
-  if (overrideData.size === 0) return null;
-
-  const pathMap = buildOverridePathMap(symbolNode, rawNodeIndex, nodeIndex);
   const overrideByNodeId = new Map<string, OverrideData>();
 
-  for (const [path, data] of overrideData.entries()) {
-    const nodeId = pathMap.get(path);
-    if (!nodeId) continue;
-    const existing = overrideByNodeId.get(nodeId);
-    overrideByNodeId.set(nodeId, existing ? { ...existing, ...data } : data);
+  if (overrideData.size > 0) {
+    const pathMap = buildOverridePathMap(symbolNode, rawNodeIndex, nodeIndex);
+    for (const [path, data] of overrideData.entries()) {
+      const nodeId = pathMap.get(path);
+      if (!nodeId) continue;
+      const existing = overrideByNodeId.get(nodeId);
+      overrideByNodeId.set(nodeId, existing ? { ...existing, ...data } : data);
+    }
   }
-
-  if (overrideByNodeId.size === 0) return null;
 
   const topLevelAssignmentsRaw = instanceRaw.componentPropAssignments as unknown[] | undefined;
   if (topLevelAssignmentsRaw) {
@@ -534,6 +536,8 @@ export function resolveInstanceChildren(
       );
     }
   }
+
+  if (overrideByNodeId.size === 0) return null;
 
   const clonedSymbol = cloneWithOverrides(symbolNode, overrideByNodeId, nodeIndex, new Set<string>());
   return clonedSymbol.children ? (clonedSymbol.children as FigNode[]) : null;

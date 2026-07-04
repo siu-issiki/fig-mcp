@@ -61,6 +61,45 @@ describe("collectTexts", () => {
     expect(collectTexts(instance)).toEqual([]);
   });
 
+  it("applies text overrides that exist only as componentPropAssignments", () => {
+    const propDef = { sessionID: 5, localID: 50 };
+    const label = node("Label", "TEXT", { characters: "デフォルト" });
+    const symbol = node("Card", "SYMBOL", {}, [label]);
+    const instance = node("Card Instance", "INSTANCE", {
+      symbolData: { symbolID: symbol.guid },
+    });
+    const root = node("Document", "DOCUMENT", {}, [instance, symbol]);
+    const nodeIndex = buildNodeIdIndex(root);
+
+    const guidKey = (g: unknown) => {
+      const { sessionID, localID } = g as { sessionID: number; localID: number };
+      return `${sessionID}:${localID}`;
+    };
+    const rawNodeIndex = new Map<string, Record<string, unknown>>([
+      [
+        guidKey(instance.guid),
+        {
+          guid: instance.guid,
+          componentPropAssignments: [
+            { defID: propDef, value: { textValue: { characters: "上書きテキスト" } } },
+          ],
+        },
+      ],
+      [
+        guidKey(label.guid),
+        {
+          guid: label.guid,
+          componentPropRefs: [{ defID: propDef, componentPropNodeField: "TEXT_DATA" }],
+        },
+      ],
+    ]);
+
+    const texts = collectTexts(instance, nodeIndex, rawNodeIndex);
+    expect(texts).toEqual([
+      { name: "Label", content: "上書きテキスト", instance: "Card Instance" },
+    ]);
+  });
+
   it("guards against recursive symbol references", () => {
     const symbolGuid = { sessionID: 9, localID: 99 };
     const symbol = node("Recursive", "SYMBOL", {}, [

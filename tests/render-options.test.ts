@@ -46,4 +46,25 @@ describe("renderScreen option merging", () => {
     const { svg } = renderScreen(frame, undefined, [], { includeFills: false });
     expect(svg).not.toContain("rgb(255, 0, 0)");
   });
+
+  it("renders image fills even when includeFills is false", () => {
+    const imageRect = {
+      guid: { sessionID: 1, localID: 3 },
+      name: "Photo",
+      type: "RECTANGLE",
+      x: 0,
+      y: 0,
+      width: 10,
+      height: 10,
+      fills: [{ type: "IMAGE", imageHash: "abc123", visible: true }],
+    } as unknown as FigNode;
+    // PNG magic bytes are enough for format detection
+    const images = new Map([["abc123", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])]]);
+
+    const { svg } = renderScreen(imageRect, images, [], {
+      includeFills: false,
+      includeImages: true,
+    });
+    expect(svg).toContain("<image");
+  });
 });

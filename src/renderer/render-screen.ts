@@ -328,10 +328,13 @@ function renderRectangle(
   includeFills = true,
   includeStrokes = true,
 ): boolean {
-  const fills = includeFills ? getPaints(node as FigNode, "fills") : undefined;
+  // Fills are always read so image paints stay renderable when
+  // includeImages is on but includeFills is off; only the solid fill
+  // colour is gated by includeFills.
+  const fills = getPaints(node as FigNode, "fills");
   const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
-  const fillColor = paintToColor(fillPaint);
+  const fillColor = includeFills ? paintToColor(fillPaint) : undefined;
   const strokeColor = paintToColor(getVisiblePaint(strokes));
 
   // Check for image fill
