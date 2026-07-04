@@ -245,7 +245,7 @@ function buildOverrideData(
             visible: typeof boolValue === "boolean" ? boolValue : undefined,
             symbolId: guidValue,
           });
-        } else if (characters) {
+        } else if (typeof characters === "string") {
           entry.characters = characters;
         }
       }
@@ -289,7 +289,7 @@ function buildOverrideData(
 }
 
 function applyOverrideToNode(node: SceneNode, override: OverrideData): void {
-  if (override.characters) {
+  if (typeof override.characters === "string") {
     node.characters = override.characters;
   }
   if (override.fillPaints) {
@@ -405,7 +405,7 @@ function applyComponentPropAssignments(
         const assignment = byDefId.get(defId);
         if (assignment) {
           const existing = overrideByNodeId.get(nodeId) ?? {};
-          if (ref.componentPropNodeField === "TEXT_DATA" && assignment.characters) {
+          if (ref.componentPropNodeField === "TEXT_DATA" && typeof assignment.characters === "string") {
             overrideByNodeId.set(nodeId, { ...existing, characters: assignment.characters });
           } else if (ref.componentPropNodeField === "VISIBLE" && assignment.visible !== undefined) {
             overrideByNodeId.set(nodeId, { ...existing, visible: assignment.visible });
@@ -476,20 +476,22 @@ export function resolveInstanceChildren(
   const instanceRaw = rawNodeIndex.get(formatGUID(instance.guid));
   if (!instanceRaw) return null;
 
+  // Overrides can come from two independent sources: symbolOverrides
+  // (guid-path based) and top-level componentPropAssignments. An instance
+  // customized only via component props has no symbolOverrides, so neither
+  // source alone may be treated as required.
   const overrideData = buildOverrideData(instance, instanceRaw);
-  if (overrideData.size === 0) return null;
-
-  const pathMap = buildOverridePathMap(symbolNode, rawNodeIndex, nodeIndex);
   const overrideByNodeId = new Map<string, OverrideData>();
 
-  for (const [path, data] of overrideData.entries()) {
-    const nodeId = pathMap.get(path);
-    if (!nodeId) continue;
-    const existing = overrideByNodeId.get(nodeId);
-    overrideByNodeId.set(nodeId, existing ? { ...existing, ...data } : data);
+  if (overrideData.size > 0) {
+    const pathMap = buildOverridePathMap(symbolNode, rawNodeIndex, nodeIndex);
+    for (const [path, data] of overrideData.entries()) {
+      const nodeId = pathMap.get(path);
+      if (!nodeId) continue;
+      const existing = overrideByNodeId.get(nodeId);
+      overrideByNodeId.set(nodeId, existing ? { ...existing, ...data } : data);
+    }
   }
-
-  if (overrideByNodeId.size === 0) return null;
 
   const topLevelAssignmentsRaw = instanceRaw.componentPropAssignments as unknown[] | undefined;
   if (topLevelAssignmentsRaw) {
@@ -534,6 +536,8 @@ export function resolveInstanceChildren(
       );
     }
   }
+
+  if (overrideByNodeId.size === 0) return null;
 
   const clonedSymbol = cloneWithOverrides(symbolNode, overrideByNodeId, nodeIndex, new Set<string>());
   return clonedSymbol.children ? (clonedSymbol.children as FigNode[]) : null;

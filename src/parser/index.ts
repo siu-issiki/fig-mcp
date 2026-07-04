@@ -18,6 +18,7 @@ export * from "./fig-reader.js";
 export * from "./kiwi-parser.js";
 export * from "./layout-inference.js";
 export * from "./instance-resolver.js";
+export * from "./text-extraction.js";
 
 /**
  * Build an O(1) GUID lookup index for a document tree.

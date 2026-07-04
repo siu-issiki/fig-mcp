@@ -6,7 +6,8 @@
  */
 
 import http from "http";
-import { getOrParseFigFile, detectImageFormat, normalizeImageHash } from "./mcp/server.js";
+import { getOrParseFigFile } from "./mcp/file-cache.js";
+import { detectImageFormat, normalizeImageHash } from "./mcp/tool-helpers.js";
 import { config } from "./shared-config.js";
 
 const DEFAULT_PORT = 3847;

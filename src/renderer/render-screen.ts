@@ -325,11 +325,16 @@ function renderRectangle(
   images: Map<string, Uint8Array> | undefined,
   includeImages: boolean,
   output: string[],
+  includeFills = true,
+  includeStrokes = true,
 ): boolean {
+  // Fills are always read so image paints stay renderable when
+  // includeImages is on but includeFills is off; only the solid fill
+  // colour is gated by includeFills.
   const fills = getPaints(node as FigNode, "fills");
-  const strokes = getPaints(node as FigNode, "strokes");
+  const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
-  const fillColor = paintToColor(fillPaint);
+  const fillColor = includeFills ? paintToColor(fillPaint) : undefined;
   const strokeColor = paintToColor(getVisiblePaint(strokes));
 
   // Check for image fill
@@ -652,6 +657,8 @@ function renderNode(
         images,
         options.includeImages,
         nodeOutput,
+        options.includeFills,
+        options.includeStrokes,
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
@@ -671,6 +678,8 @@ function renderNode(
           images,
           options.includeImages,
           nodeOutput,
+          options.includeFills,
+          options.includeStrokes,
         );
       }
     }
@@ -888,7 +897,12 @@ export function renderScreen(
   blobs?: BlobEntry[],
   options: RenderScreenOptions = {},
 ): RenderScreenResult {
-  const resolved = { ...DEFAULT_RENDER_OPTIONS, ...options };
+  // Strip undefined values so callers passing explicit `undefined`
+  // (e.g. `{ includeText: undefined }`) don't clobber the defaults.
+  const definedOptions = Object.fromEntries(
+    Object.entries(options).filter(([, value]) => value !== undefined),
+  ) as RenderScreenOptions;
+  const resolved = { ...DEFAULT_RENDER_OPTIONS, ...definedOptions };
   const ctx: RenderContext = { defs: [], clipCounter: 0, shadowCounter: 0, warnings: [] };
 
   // Calculate bounds
