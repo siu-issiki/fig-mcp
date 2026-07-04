@@ -558,6 +558,7 @@ export function renderFilledVector(
   const baseScaleX = normalizedSize?.x ? targetWidth / normalizedSize.x : 1;
   const baseScaleY = normalizedSize?.y ? targetHeight / normalizedSize.y : 1;
 
+  let emitted = false;
   for (const path of fillGeometry) {
     let commands: PathCommand[] | null = null;
 
@@ -604,7 +605,10 @@ export function renderFilledVector(
     if (node.opacity !== undefined && node.opacity < 1) attrs.push(`opacity="${node.opacity}"`);
 
     output.push(`<path ${attrs.join(" ")} />`);
+    emitted = true;
   }
 
-  return true;
+  // Report failure when nothing was emitted (e.g. blob decode failed) so
+  // callers can fall back instead of assuming the geometry was drawn.
+  return emitted;
 }

@@ -122,6 +122,31 @@ describe("render fidelity", () => {
     expect(svg).not.toContain("rgb(0, 255, 0)");
   });
 
+  it("renders boolean operands when geometry blobs cannot be decoded", () => {
+    const operand = base(12, "operand", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+    });
+    const boolOp = base(13, "Union", "BOOLEAN_OPERATION", {
+      booleanOperation: "UNION",
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      fillGeometry: [{ windingRule: "NONZERO", commandsBlob: 999 }],
+      children: [operand],
+    });
+    // blob 999 does not exist -> geometry decode fails -> operands must render
+    const { svg } = renderScreen(boolOp, undefined, []);
+    expect(svg).toContain("rgb(255, 0, 0)");
+  });
+
+  it("falls back to a synthesized border when strokeGeometry cannot be decoded", () => {
+    const frame = base(14, "bordered", "FRAME", {
+      strokes: [{ type: "SOLID", color: { r: 0.7, g: 0.5, b: 0.4, a: 1 }, visible: true }],
+      strokeGeometry: [{ windingRule: "NONZERO", commandsBlob: 999 }],
+      children: [],
+    });
+    const { svg } = renderScreen(frame, undefined, []);
+    expect(svg).toMatch(/<rect[^>]*stroke="rgb\(179, 128, 102\)"/);
+  });
+
   it("resolveFonts reports unknown families as missing without downloading", async () => {
     const { fontFiles, missing } = await resolveFonts(
       [{ family: "Definitely Not A Real Font 12345", weight: 400, style: "normal" }],

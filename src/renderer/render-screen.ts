@@ -800,24 +800,25 @@ function renderNode(
       }
     }
     if (options.includeStrokes) {
+      // Container strokes prefer Figma's precomputed strokeGeometry: it
+      // carries dash segments and collapses to nothing for effectively
+      // invisible borders, which a synthesized rect outline would get wrong.
+      let strokeRendered = false;
       if (hasStrokeGeometry) {
-        // Container strokes use Figma's precomputed strokeGeometry: it
-        // carries dash segments and collapses to nothing for effectively
-        // invisible borders, which a synthesized rect outline would get wrong.
-        const strokeRendered = renderStrokeGeometryFill(
+        strokeRendered = renderStrokeGeometryFill(
           sceneNode,
           worldTransform,
           blobs,
           ctx,
           nodeOutput,
         );
-        rendered = rendered || strokeRendered;
-      } else if (sceneNode.width && sceneNode.height) {
-        // No precomputed geometry (e.g. partially parsed nodes):
-        // fall back to a synthesized rectangular border.
+      }
+      // Fall back to a synthesized rectangular border when there is no
+      // usable geometry (missing, or its blobs could not be decoded).
+      if (!strokeRendered && sceneNode.width && sceneNode.height) {
         const strokeColor = paintToColor(getVisiblePaint(getPaints(node, "strokes")));
         if (strokeColor) {
-          const strokeRendered = renderRectangle(
+          strokeRendered = renderRectangle(
             sceneNode,
             worldTransform,
             images,
@@ -826,9 +827,9 @@ function renderNode(
             false,
             true,
           );
-          rendered = rendered || strokeRendered;
         }
       }
+      rendered = rendered || strokeRendered;
     }
   }
 
