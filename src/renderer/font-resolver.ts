@@ -90,18 +90,18 @@ export interface ResolveFontsResult {
 }
 
 /**
- * Ensure font files exist locally for the given fonts. Cached families are
- * always used; downloading missing families from Google Fonts is opt-in
- * (`download: true`) because the request exposes the design's font family
- * names to a third party. Never throws: families that cannot be resolved
- * are reported in `missing`.
+ * Ensure font files exist locally for the given fonts, downloading missing
+ * families from Google Fonts by default (note: the request exposes the
+ * design's font family names to a third party; pass `download: false` for
+ * fully offline resolution using only cached files). Never throws: families
+ * that cannot be resolved are reported in `missing`.
  */
 export async function resolveFonts(
   fonts: UsedFont[],
   options: { cacheDir?: string; download?: boolean } = {},
 ): Promise<ResolveFontsResult> {
   const cacheDir = options.cacheDir ?? DEFAULT_CACHE_DIR;
-  const download = options.download === true;
+  const download = options.download !== false;
   const fontFiles: string[] = [];
   const missing: string[] = [];
 
