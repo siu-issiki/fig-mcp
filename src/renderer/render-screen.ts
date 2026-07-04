@@ -41,6 +41,7 @@ import {
   getPaints,
   getVisiblePaint,
   paintToColor,
+  paintToSvgFill,
   paintToImageHash,
   detectImageFormat,
   getMimeType,
@@ -190,13 +191,61 @@ function generateEffectFilters(
     return undefined;
   }
 
-  // Collect visible shadow effects
+  // Collect visible effects
   const dropShadows = node.effects.filter(
     (e) => e.type === "DROP_SHADOW" && e.visible !== false
   );
   const innerShadows = node.effects.filter(
     (e) => e.type === "INNER_SHADOW" && e.visible !== false
   );
+  // Layer blur ("FOREGROUND_BLUR" in the kiwi schema) blurs the node itself.
+  // BACKGROUND_BLUR/GLASS blur what is BEHIND the node, which SVG cannot
+  // express in a single pass; their translucent fill still renders.
+  const layerBlurs = node.effects.filter(
+    (e) =>
+      (e.type === "FOREGROUND_BLUR" || e.type === "LAYER_BLUR") &&
+      e.visible !== false &&
+      (e.radius ?? 0) > 0
+  );
+
+  if (layerBlurs.length > 0) {
+    const filterId = `blur-${ctx.shadowCounter++}`;
+    const stdDev = (layerBlurs[0].radius ?? 0) / 2;
+    if (dropShadows.length > 0) {
+      // Chain: blur the node, then drop-shadow the blurred result, so
+      // blur + shadow layers keep both effects.
+      const e = dropShadows[0];
+      const spread = e.spread ?? 0;
+      const shadowStd = (e.radius ?? 0) / 2;
+      const dx = e.offset?.x ?? 0;
+      const dy = e.offset?.y ?? 0;
+      const shadowChain =
+        spread === 0
+          ? `<feDropShadow in="blurred" dx="${dx}" dy="${dy}" stdDeviation="${shadowStd}" flood-color="${colorToRgba(e.color)}" />`
+          : // Same morphology-based spread handling as the shadow-only path,
+            // but fed from the blurred source instead of SourceAlpha.
+            `<feMorphology in="blurred" operator="${spread > 0 ? "dilate" : "erode"}" radius="${Math.abs(spread)}" result="spreaded" />` +
+            `<feGaussianBlur in="spreaded" stdDeviation="${shadowStd}" result="shadowBlur" />` +
+            `<feOffset in="shadowBlur" dx="${dx}" dy="${dy}" result="offsetBlur" />` +
+            `<feFlood flood-color="${colorToRgba(e.color)}" result="color" />` +
+            `<feComposite in="color" in2="offsetBlur" operator="in" result="shadow" />` +
+            `<feMerge><feMergeNode in="shadow" /><feMergeNode in="blurred" /></feMerge>`;
+      ctx.defs.push(
+        `<filter id="${filterId}" x="-100%" y="-100%" width="300%" height="300%">` +
+          `<feGaussianBlur in="SourceGraphic" stdDeviation="${stdDev}" result="blurred" />` +
+          shadowChain +
+          `</filter>`
+      );
+      return filterId;
+    }
+    // Inner shadow + layer blur is not composed; the blur dominates visually.
+    ctx.defs.push(
+      `<filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%">` +
+        `<feGaussianBlur stdDeviation="${stdDev}" />` +
+        `</filter>`
+    );
+    return filterId;
+  }
 
   if (dropShadows.length === 0 && innerShadows.length === 0) {
     return undefined;
@@ -516,6 +565,7 @@ function renderRectangle(
   output: string[],
   includeFills = true,
   includeStrokes = true,
+  ctx?: RenderContext,
 ): boolean {
   // Fills are always read so image paints stay renderable when
   // includeImages is on but includeFills is off; only the solid fill
@@ -523,8 +573,13 @@ function renderRectangle(
   const fills = getPaints(node as FigNode, "fills");
   const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
-  const fillColor = includeFills ? paintToColor(fillPaint) : undefined;
-  const strokeColor = paintToColor(getVisiblePaint(strokes));
+  const gradientShape = {
+    transform,
+    width: node.width ?? 0,
+    height: node.height ?? 0,
+  };
+  const fillColor = includeFills ? paintToSvgFill(fillPaint, ctx, gradientShape) : undefined;
+  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx, gradientShape);
 
   // Check for image fill
   let hasImageFill = false;
@@ -547,15 +602,18 @@ function renderRectangle(
             ? "none"
             : "xMidYMid slice";
 
-      const pos = transformPoint(0, 0, transform);
-      const width = node.width ?? 0;
-      const height = node.height ?? 0;
+      const imgW = node.width ?? 0;
+      const imgH = node.height ?? 0;
 
+      // Local coordinates with the full matrix: mirrored (negative-scale)
+      // images render flipped at their real bounds, and rotation/skew are
+      // preserved, without any per-case corner math.
       const attrs: string[] = [
-        `x="${pos.x}"`,
-        `y="${pos.y}"`,
-        `width="${width}"`,
-        `height="${height}"`,
+        `x="0"`,
+        `y="0"`,
+        `width="${imgW}"`,
+        `height="${imgH}"`,
+        `transform="matrix(${transform.a} ${transform.b} ${transform.c} ${transform.d} ${transform.e} ${transform.f})"`,
         `preserveAspectRatio="${preserve}"`,
         `href="data:${mimeType};base64,${base64}"`,
       ];
@@ -585,11 +643,12 @@ function renderRectangle(
     Math.abs(p0.y - p1.y) < 0.01 && Math.abs(p1.x - p2.x) < 0.01;
 
   if (isAxisAligned) {
+    // min/abs so mirrored (negative-scale) nodes keep their real bounds
     const attrs: string[] = [
-      `x="${p0.x}"`,
-      `y="${p0.y}"`,
-      `width="${width}"`,
-      `height="${height}"`,
+      `x="${Math.min(p0.x, p2.x)}"`,
+      `y="${Math.min(p0.y, p2.y)}"`,
+      `width="${Math.abs(p2.x - p0.x)}"`,
+      `height="${Math.abs(p2.y - p0.y)}"`,
     ];
 
     if (fillColor) attrs.push(`fill="${fillColor}"`);
@@ -610,7 +669,7 @@ function renderRectangle(
       // SVG clamps rx/ry independently which creates elliptical corners
       // when cornerRadius > min(width, height)/2, producing a tapered "football" shape.
       // By clamping ourselves, we ensure proper pill/stadium shapes.
-      const maxRadius = Math.min(width, height) / 2;
+      const maxRadius = Math.min(Math.abs(p2.x - p0.x), Math.abs(p2.y - p0.y)) / 2;
       const clampedRadius = Math.min(cornerRadius, maxRadius);
       attrs.push(`rx="${clampedRadius}"`);
       attrs.push(`ry="${clampedRadius}"`);
@@ -858,6 +917,7 @@ function renderNode(
         nodeOutput,
         options.includeFills,
         options.includeStrokes,
+        ctx,
       );
     }
   } else if (CONTAINER_TYPES.has(node.type ?? "")) {
@@ -881,6 +941,7 @@ function renderNode(
           nodeOutput,
           options.includeFills,
           false,
+          ctx,
         );
       }
     }
@@ -911,6 +972,7 @@ function renderNode(
             nodeOutput,
             false,
             true,
+            ctx,
           );
         }
       }

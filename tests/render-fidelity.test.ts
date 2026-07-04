@@ -166,3 +166,151 @@ describe("render fidelity", () => {
     expect(missing).toEqual(["Definitely Not A Real Font 12345"]);
   });
 });
+
+describe("gradient fills", () => {
+  const stops = [
+    { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+    { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+  ];
+
+  it("renders linear gradients as SVG linearGradient", () => {
+    const rect = base(20, "grad", "RECTANGLE", {
+      fills: [{ type: "GRADIENT_LINEAR", visible: true, stops }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("<linearGradient");
+    expect(svg).toMatch(/fill="url\(#grad-\d+\)"/);
+    expect(svg).toContain('stop-color="rgb(255, 0, 0)"');
+    expect(svg).toContain('stop-opacity="0.500"');
+  });
+
+  it("renders radial gradients as SVG radialGradient", () => {
+    const rect = base(21, "grad-r", "RECTANGLE", {
+      fills: [{ type: "GRADIENT_RADIAL", visible: true, stops }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("<radialGradient");
+    expect(svg).toMatch(/fill="url\(#grad-\d+\)"/);
+  });
+
+  it("falls back to the first stop for text fills", () => {
+    const node = base(22, "grad-text", "TEXT", {
+      characters: "abc",
+      style: textStyle,
+      fills: [{ type: "GRADIENT_LINEAR", visible: true, stops }],
+    });
+    const { svg } = renderScreen(node, undefined, []);
+    expect(svg).toContain('fill="rgb(255, 0, 0)"');
+  });
+});
+
+describe("image fill transforms", () => {
+  const imageFill = {
+    fills: [{ type: "IMAGE", imageHash: "img1", visible: true }],
+  };
+  const images = new Map([["img1", new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a])]]);
+
+  it("renders mirrored image fills flipped at their real bounds", () => {
+    const rect = base(30, "flipped", "RECTANGLE", {
+      ...imageFill,
+      width: 200,
+      height: 200,
+      transform: { m00: -1, m01: 0, m02: 232.5, m10: 0, m11: 1, m12: 0 },
+    });
+    const { svg } = renderScreen(rect, images, [], { includeImages: true });
+    // the negative scale is preserved so the bitmap is actually mirrored
+    expect(svg).toMatch(/<image[^>]*transform="matrix\(-1 0 0 1 /);
+    expect(svg).toMatch(/<image[^>]*width="200"/);
+  });
+
+  it("keeps the full matrix for rotated image fills", () => {
+    const s = Math.SQRT1_2;
+    const rect = base(31, "rotated", "RECTANGLE", {
+      ...imageFill,
+      width: 100,
+      height: 100,
+      transform: { m00: s, m01: -s, m02: 50, m10: s, m11: s, m12: 0 },
+    });
+    const { svg } = renderScreen(rect, images, [], { includeImages: true });
+    expect(svg).toMatch(/<image[^>]*transform="matrix\(/);
+    expect(svg).toMatch(/<image[^>]*width="100"/);
+  });
+});
+
+describe("blur effects", () => {
+  it("applies layer blur (FOREGROUND_BLUR) as a gaussian filter", () => {
+    const rect = base(40, "blurred", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [{ type: "FOREGROUND_BLUR", visible: true, radius: 20 }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain('<feGaussianBlur stdDeviation="10" />');
+    expect(svg).toMatch(/<g filter="url\(#blur-\d+\)">/);
+  });
+
+  it("ignores background blur (no backdrop-filter in SVG) but keeps the fill", () => {
+    const rect = base(41, "glass", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 1, b: 1, a: 0.5 }, visible: true }],
+      effects: [{ type: "BACKGROUND_BLUR", visible: true, radius: 20 }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).not.toContain("feGaussianBlur");
+    expect(svg).toContain("rgba(255, 255, 255, 0.50)");
+  });
+});
+
+describe("effect and gradient composition", () => {
+  it("chains layer blur with drop shadow", () => {
+    const rect = base(42, "blur-shadow", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [
+        { type: "FOREGROUND_BLUR", visible: true, radius: 20 },
+        { type: "DROP_SHADOW", visible: true, radius: 4, offset: { x: 0, y: 2 }, color: { r: 0, g: 0, b: 0, a: 0.25 } },
+      ],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("feGaussianBlur");
+    expect(svg).toContain("feDropShadow");
+  });
+
+  it("does not crash on non-string paint types", () => {
+    const rect = base(45, "weird-paint", "RECTANGLE", {
+      fills: [{ type: 1, visible: true } as unknown as Record<string, unknown>],
+    });
+    expect(() => renderScreen(rect, undefined, [])).not.toThrow();
+  });
+
+  it("keeps shadow spread when chained with layer blur", () => {
+    const rect = base(44, "blur-spread", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [
+        { type: "FOREGROUND_BLUR", visible: true, radius: 20 },
+        { type: "DROP_SHADOW", visible: true, radius: 4, spread: 6, offset: { x: 0, y: 2 }, color: { r: 0, g: 0, b: 0, a: 0.25 } },
+      ],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("feGaussianBlur");
+    expect(svg).toContain('<feMorphology in="blurred" operator="dilate" radius="6"');
+  });
+
+  it("rotated gradients follow the node transform via userSpaceOnUse", () => {
+    const s = Math.SQRT1_2;
+    const rect = base(43, "rot-grad", "RECTANGLE", {
+      width: 100,
+      height: 100,
+      transform: { m00: s, m01: -s, m02: 100, m10: s, m11: s, m12: 0 },
+      fills: [{
+        type: "GRADIENT_LINEAR",
+        visible: true,
+        stops: [
+          { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+          { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } },
+        ],
+      }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain('gradientUnits="userSpaceOnUse"');
+    // rotation components present in the gradient transform
+    expect(svg).toMatch(/gradientTransform="matrix\(70\.710\d+ 70\.710\d+/);
+  });
+});

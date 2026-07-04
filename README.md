@@ -1,17 +1,14 @@
-# @bilalba/fig-mcp
+# fig-mcp (siu-issiki fork)
 
 MCP server for parsing `.fig` files. Enables AI assistants to understand and extract design information from the `.fig` file format for implementation guidance.
+
+Forked from [bilalba/fig-mcp](https://github.com/bilalba/fig-mcp) with substantial rendering-fidelity and robustness improvements — see [Fork changes](#fork-changes).
 
 ## Installation
 
 ```bash
-npm install -g @bilalba/fig-mcp
-```
-
-Or use directly with npx:
-
-```bash
-npx @bilalba/fig-mcp --help
+git clone https://github.com/siu-issiki/fig-mcp
+cd fig-mcp && npm install && npm run build
 ```
 
 ## Quick Start
@@ -19,7 +16,7 @@ npx @bilalba/fig-mcp --help
 ### Add to Claude
 
 ```bash
-claude mcp add fig-mcp -- npx @bilalba/fig-mcp
+claude mcp add fig-mcp -- node /path/to/fig-mcp/dist/index.js
 ```
 
 Then ask Claude to parse your `.fig` files:
@@ -100,7 +97,7 @@ The MCP server exposes the following tools for AI assistants:
 | `list_images` | List all images with metadata |
 | `get_image` | Get image by hash (base64) |
 | `get_thumbnail` | Get document thumbnail |
-| `render_screen` | Render node subtree as PNG |
+| `render_screen` | Render node subtree as PNG (see options below) |
 | `get_vector` | Export vector as SVG, PDF, PNG, or WebP |
 
 ### Debugging
@@ -111,6 +108,18 @@ The MCP server exposes the following tools for AI assistants:
 | `get_raw_message` | Raw decoded message |
 | `list_archive_contents` | List files in the archive |
 | `clear_cache` | Clear file cache |
+
+### render_screen options
+
+| Option | Description |
+|--------|-------------|
+| `includeImages` | Embed image fills (default: false) |
+| `downloadFonts` | Download missing Google Fonts for fallback text, cached in `~/.cache/fig-mcp/fonts` (default: true; sends font family names to Google — set false for fully offline rendering) |
+| `fontMap` | Fallback families for non-Google fonts, e.g. `{"AFSGillSBCond": "Gill Sans"}` |
+| `fontDirs` | Extra directories to scan for font files |
+| `scale`, `maxWidth`, `maxHeight`, `background`, `maxDepth`, `includeText/Fills/Strokes/Shadows` | Rendering controls |
+
+Most text renders from **glyph outlines embedded in the file** and needs no fonts at all; the font options only affect text without embedded glyph data.
 
 ## How It Works
 
@@ -134,13 +143,41 @@ The MCP server exposes the following tools for AI assistants:
 - Extract document structure, nodes, and hierarchy
 - Infer layout properties (flexbox-like direction, gap, padding, alignment)
 - Extract colors, text content, and styling information
-- Render nodes to PNG screenshots
+- Render nodes to PNG screenshots with near-design fidelity
 - Export vectors as SVG, PDF, PNG, or WebP
-- Full effect support (shadows, blurs)
+- Effects (shadows, layer blur), gradients, masks, dashed borders — background/glass blur is approximated by the translucent fill (SVG has no backdrop-filter)
+
+## Fork changes
+
+Rendering fidelity (verified pixel-by-pixel against Figma prototype screenshots):
+
+- **Embedded glyph rendering**: text renders from the glyph outlines stored in the file (`derivedTextData.glyphs`), reproducing exact letterforms of fonts that are not installed anywhere — including circular text on paths with per-glyph rotation
+- Component INSTANCE resolution in both rendering and `get_text_content` (SYMBOL expansion with overrides, incl. `componentPropAssignments`)
+- Masks become SVG clipPaths (icon "Bounding box" layers no longer paint over glyphs)
+- Frame borders render from Figma's precomputed `strokeGeometry` (dashes included; invisible borders stay invisible)
+- Linear/radial gradient fills, mirrored (negative-scale) nodes, `textCase`, rotated text
+- Sibling z-order follows the fractional-index position (not nodeChanges order)
+- Google Fonts on-demand download + `fontMap`/`fontDirs` for fallback text
+
+Robustness:
+
+- Schema-driven argument validation with clear error messages
+- `resolveNodePath` handles node names containing `/` and reports candidates on failure
+- BigInt-safe `get_raw_message`; graceful fallbacks when geometry blobs are missing
+- `server.ts` split into per-category tool modules; vitest suite (`npm test`)
+
+## Testing
+
+```bash
+npm test
+```
+
+Unit tests run standalone. Integration tests against a real file run when
+`FIG_TEST_FILE` points at a `.fig` export (defaults to `~/Downloads/toritori2.0.fig`).
 
 ## Requirements
 
-- Node.js 18 or higher
+- Node.js 20 or higher
 
 ## Limitations
 

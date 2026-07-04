@@ -159,6 +159,9 @@ export interface Paint {
   color?: Color;
   gradientStops?: GradientStop[];
   gradientTransform?: Transform;
+  /** Raw kiwi field names for gradients */
+  stops?: GradientStop[];
+  transform?: Transform;
   scaleMode?: "FILL" | "FIT" | "TILE" | "STRETCH";
   imageRef?: string;
   blendMode?: BlendMode;
@@ -169,7 +172,9 @@ export type EffectType =
   | "DROP_SHADOW"
   | "INNER_SHADOW"
   | "LAYER_BLUR"
-  | "BACKGROUND_BLUR";
+  | "FOREGROUND_BLUR" // kiwi name for layer blur
+  | "BACKGROUND_BLUR"
+  | "GLASS";
 
 export interface Effect {
   type: EffectType;

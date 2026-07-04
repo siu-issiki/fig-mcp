@@ -234,7 +234,7 @@ export function getNodeTypeName(typeValue: unknown): NodeType {
 function buildTreeFromNodeChanges(nodeChanges: unknown[]): DocumentNode | null {
   // Create a map of guid -> node
   const nodeMap = new Map<string, FigNode & { children: FigNode[] }>();
-  const childrenMap = new Map<string, FigNode[]>();
+  const childrenMap = new Map<string, Array<{ node: FigNode; position: string }>>();
   let documentNode: (FigNode & { children: FigNode[] }) | null = null;
 
   // First pass: convert all nodes and build the map
@@ -266,16 +266,22 @@ function buildTreeFromNodeChanges(nodeChanges: unknown[]): DocumentNode | null {
         if (!childrenMap.has(parentKey)) {
           childrenMap.set(parentKey, []);
         }
-        childrenMap.get(parentKey)!.push(nodeWithChildren);
+        childrenMap.get(parentKey)!.push({
+          node: nodeWithChildren,
+          position: typeof parentIndex["position"] === "string" ? parentIndex["position"] : "",
+        });
       }
     }
   }
 
-  // Second pass: connect children to parents
+  // Second pass: connect children to parents. Sibling order (z-order) is
+  // defined by the fractional-index position string, not by the order the
+  // nodes appear in nodeChanges (which is edit order).
   for (const [parentKey, children] of childrenMap) {
     const parent = nodeMap.get(parentKey);
     if (parent) {
-      parent.children = children;
+      children.sort((a, b) => (a.position < b.position ? -1 : a.position > b.position ? 1 : 0));
+      parent.children = children.map((c) => c.node);
     }
   }
 
