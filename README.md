@@ -1,209 +1,159 @@
-# fig-mcp (siu-issiki fork)
+# fig-mcp
 
-MCP server for parsing `.fig` files. Enables AI assistants to understand and extract design information from the `.fig` file format for implementation guidance.
+**ローカルの Figma ファイル（.fig）を、AIが読めるようにするMCPサーバー**です。
 
-Forked from [bilalba/fig-mcp](https://github.com/bilalba/fig-mcp) with substantial rendering-fidelity and robustness improvements — see [Fork changes](#fork-changes).
+Figma で「Save local copy...」した `.fig` ファイルを渡すと、Claude などのAIアシスタントがデザインの中身（画面の構造・テキスト・色・レイアウト）を直接読み取れるようになります。Figma のアカウント連携やAPIキーは不要で、すべて手元のマシンで完結します。
 
-## Installation
+「このデザインどおりに実装して」とAIに頼むとき、スクリーンショットを見せる代わりに `.fig` ファイルそのものを読ませられる、と考えるとイメージしやすいと思います。
 
-No install step needed — run straight from npm:
+[bilalba/fig-mcp](https://github.com/bilalba/fig-mcp) をフォークして、描画の再現度と安定性を大きく改善したものです（詳細は[フォークでの改善点](#フォークでの改善点)）。
 
-```bash
-npx -y @siu-issiki/fig-mcp --help
-```
+## できること
 
-For development:
+- **デザインの構造を読む** — 画面にどんなフレームや部品がどう並んでいるかをツリーで取得
+- **テキストを抜き出す** — ボタンのラベルや見出しなど、画面上の文字をすべて取得（コンポーネント内の上書きテキストも対応）
+- **色やレイアウトを調べる** — 使われている色の一覧や、余白・整列などのレイアウト情報を取得
+- **画面をPNG画像にする** — デザインをほぼ見た目どおりに画像化。フォントが手元になくても、ファイル内に埋め込まれた文字の形をそのまま使うので原物どおりに描画されます
+- **アイコンをSVGで書き出す** — ベクター要素を SVG / PDF / PNG / WebP に変換
 
-```bash
-git clone https://github.com/siu-issiki/fig-mcp
-cd fig-mcp && npm install && npm run build
-```
+## インストール
 
-## Quick Start
-
-### Add to Claude
+npm に公開済みなので、インストール作業は不要です。Claude Code なら次の1コマンドで使えるようになります：
 
 ```bash
 claude mcp add fig-mcp -- npx -y @siu-issiki/fig-mcp
 ```
 
-Alternatives — build from GitHub (`npx -y github:siu-issiki/fig-mcp`) or a local clone:
+あとは Claude にこう頼むだけです：
+
+> 「~/Downloads/design.fig を読んで、画面の構造を教えて」
+
+> 「この .fig の『ホーム画面』をPNGでレンダリングして見せて」
+
+## MCPを使わずに直接使う
+
+### ブラウザでデザインを眺める（Webビューア）
 
 ```bash
-claude mcp add fig-mcp -- node /path/to/fig-mcp/dist/index.js
+npx -y @siu-issiki/fig-mcp viewer design.fig
+# ブラウザで http://localhost:3000 が開きます
 ```
 
-Then ask Claude to parse your `.fig` files:
+ツリーをたどりながらプレビューでき、MCPツールに渡すノードIDのコピーもできます。
 
-> "Parse my design.fig file and show me the document structure"
-
-### Web Viewer
-
-Browse and preview `.fig` files in your browser:
+### ターミナルで中身を確認する
 
 ```bash
-fig-mcp viewer design.fig
-# Opens http://localhost:3000
+npx -y @siu-issiki/fig-mcp inspect design.fig summary  # 画面構造をツリー表示
+npx -y @siu-issiki/fig-mcp inspect design.fig stats    # 部品の種類ごとの数
+npx -y @siu-issiki/fig-mcp inspect design.fig json     # JSONで出力
 ```
 
-Features:
-- Tree navigation with collapsible nodes
-- SVG preview with zoom/pan
-- Node details panel
-- Copy node IDs for MCP tool calls
+## AIが使えるツール一覧
 
-### CLI Inspector
+MCPサーバーとして、AIに以下の21個のツールを提供します。ふだん使う分には意識する必要はありません（AIが自分で選んで使います）。
 
-Inspect `.fig` files from the command line:
+### 構造を読む
 
-```bash
-fig-mcp inspect design.fig summary  # Show document structure
-fig-mcp inspect design.fig stats    # Show node type counts
-fig-mcp inspect design.fig list     # List archive contents
-fig-mcp inspect design.fig json     # Output simplified JSON
-```
+| ツール | 説明 |
+|------|------|
+| `parse_fig_file` | ファイル全体を簡略化した構造で返す |
+| `get_document_summary` | 構造をテキストのツリーで返す（ページ送り対応） |
+| `get_tree_summary` | 子要素の数つきの階層サマリー。深掘りの起点に |
+| `list_pages` | ページの一覧 |
+| `get_page_contents` | 特定ページの中身 |
 
-## CLI Commands
+### 部品を探す・調べる
 
-| Command | Description |
-|---------|-------------|
-| `fig-mcp` | Start MCP server (for AI assistants) |
-| `fig-mcp viewer <file> [port]` | Open web viewer |
-| `fig-mcp inspect <file> [cmd]` | Inspect file |
-| `fig-mcp --help` | Show help |
-| `fig-mcp --version` | Show version |
+| ツール | 説明 |
+|------|------|
+| `find_nodes` | 名前や種類で部品を検索 |
+| `get_node_details` | パス（例: `Page 1/ホーム/ヘッダー`）で部品の詳細を取得 |
+| `get_node_by_id` | ID（例: `457:1607`）で部品の詳細を取得 |
+| `get_layout_info` | 余白・整列などのレイアウト情報（CSSのflexbox風） |
 
-## MCP Tools
+### 中身を抜き出す
 
-The MCP server exposes the following tools for AI assistants:
+| ツール | 説明 |
+|------|------|
+| `get_text_content` | テキストをすべて抽出 |
+| `get_colors` | 使われている色の一覧 |
+| `list_nodes_with_fills` | 塗りを持つ部品の一覧 |
 
-### Document Structure
+### 画像にする
 
-| Tool | Description |
-|------|-------------|
-| `parse_fig_file` | Parse and return simplified document structure |
-| `get_document_summary` | Text tree of document structure with pagination |
-| `get_tree_summary` | Hierarchical summary for drill-down navigation |
-| `list_pages` | List all pages (canvases) in the document |
-| `get_page_contents` | Get contents of a specific page |
+| ツール | 説明 |
+|------|------|
+| `render_screen` | 画面をPNG画像にする（オプションは下記） |
+| `get_vector` | ベクター要素を SVG / PDF / PNG / WebP で書き出す |
+| `list_images` | ファイル内の画像素材の一覧 |
+| `get_image` | 画像素材を取り出す |
+| `get_thumbnail` | ファイルのサムネイルを取得 |
 
-### Node Queries
+### 調査・デバッグ用
 
-| Tool | Description |
-|------|-------------|
-| `find_nodes` | Find nodes by type or name |
-| `get_node_details` | Get details for a node by path |
-| `get_node_by_id` | Get details for a node by GUID |
-| `get_layout_info` | Get inferred layout properties |
+| ツール | 説明 |
+|------|------|
+| `get_schema_info` / `get_raw_message` / `list_archive_contents` / `clear_cache` | ファイル形式の調査やキャッシュ操作に使う低レベルツール |
 
-### Content Extraction
+### render_screen のオプション
 
-| Tool | Description |
-|------|-------------|
-| `get_text_content` | Extract all text content |
-| `get_colors` | Extract unique color palette |
-| `list_nodes_with_fills` | List nodes with fill paints |
+| オプション | 説明 |
+|--------|------|
+| `includeImages` | 写真などの画像も埋め込む（初期値: off） |
+| `downloadFonts` | 足りないフォントを Google Fonts から自動取得（初期値: on）。取得したフォントは `~/.cache/fig-mcp/fonts` に保存され、2回目以降は通信しません。フォント名がGoogleに送られるのが気になる場合は off に |
+| `fontMap` | 手に入らないフォントの身代わりを指定（例: `{"AFSGillSBCond": "Gill Sans"}`） |
+| `fontDirs` | フォントファイルを追加で探すフォルダ |
+| `scale` / `maxWidth` / `maxHeight` / `background` など | 画像サイズや背景色の調整 |
 
-### Image & Rendering
+なお、ほとんどのテキストは**ファイルに埋め込まれた文字の形（グリフ）をそのまま描画**するため、フォントが無くても原物どおりに表示されます。フォント関連のオプションが効くのは、埋め込みデータを持たない一部のテキストだけです。
 
-| Tool | Description |
-|------|-------------|
-| `list_images` | List all images with metadata |
-| `get_image` | Get image by hash (base64) |
-| `get_thumbnail` | Get document thumbnail |
-| `render_screen` | Render node subtree as PNG (see options below) |
-| `get_vector` | Export vector as SVG, PDF, PNG, or WebP |
+## 仕組み（ざっくり）
 
-### Debugging
+`.fig` ファイルの正体は ZIP で、中にはデザインデータ本体（Figma 独自のバイナリ形式）と画像素材が入っています。ありがたいことにデータの読み方（スキーマ）自体もファイルに同梱されているので、それを取り出して解読し、AIが扱いやすい形に変換しています。バイナリ形式には Figma の元CTO Evan Wallace 氏の [kiwi](https://github.com/evanw/kiwi) が使われています。
 
-| Tool | Description |
-|------|-------------|
-| `get_schema_info` | Kiwi schema information |
-| `get_raw_message` | Raw decoded message |
-| `list_archive_contents` | List files in the archive |
-| `clear_cache` | Clear file cache |
+## フォークでの改善点
 
-### render_screen options
+本家からフォークして、実際のデザインファイルとFigmaプロトタイプのスクリーンショットを見比べながら改善を重ねました。
 
-| Option | Description |
-|--------|-------------|
-| `includeImages` | Embed image fills (default: false) |
-| `downloadFonts` | Download missing Google Fonts for fallback text, cached in `~/.cache/fig-mcp/fonts` (default: true; sends font family names to Google — set false for fully offline rendering) |
-| `fontMap` | Fallback families for non-Google fonts, e.g. `{"AFSGillSBCond": "Gill Sans"}` |
-| `fontDirs` | Extra directories to scan for font files |
-| `scale`, `maxWidth`, `maxHeight`, `background`, `maxDepth`, `includeText/Fills/Strokes/Shadows` | Rendering controls |
+**見た目の再現度：**
 
-Most text renders from **glyph outlines embedded in the file** and needs no fonts at all; the font options only affect text without embedded glyph data.
+- ファイル埋め込みの文字の形（グリフ）で描画し、未所持フォントでも原物どおりの文字に（円形に沿った文字も回転込みで再現）
+- コンポーネントのインスタンス展開（上書きされたテキストや表示/非表示も反映）
+- マスク、破線の枠線、グラデーション（回転追従）、レイヤーブラー、反転・回転した画像に対応
+- 重なり順（z順）を正しく再現
 
-## How It Works
+**安定性：**
 
-1. `.fig` files are ZIP archives containing:
-   - `canvas.fig` - Main document data (kiwi binary format)
-   - `meta.json` - File metadata
-   - `thumbnail.png` - Preview image
-   - `images/` - Image assets
+- 引数の間違いに分かりやすいエラーメッセージを返す
+- `/` を含む名前の部品も正しくパスで辿れる。見つからないときは候補を提示
+- データの欠けに対して落ちずにフォールバック
+- テストスイートを整備（`npm test`）
 
-2. The `canvas.fig` uses Evan Wallace's [kiwi](https://github.com/evanw/kiwi) binary format
+## 制限事項
 
-3. The kiwi schema is embedded in each file and extracted at parse time
+- `.fig` 形式は非公開仕様のため、Figma のアップデートで読めなくなる可能性があります
+- ローカルに保存した `.fig` ファイル専用です（クラウド上のファイルは Figma 公式のMCPをどうぞ）
+- 背面ぼかし（すりガラス表現）は SVG の制約で再現できず、半透明の板として描画されます
 
-4. Document data is decoded and transformed into structured information
-
-5. Layout properties are inferred from node positions and auto-layout settings
-
-## Features
-
-- Parse `.fig` files locally without API access
-- Extract document structure, nodes, and hierarchy
-- Infer layout properties (flexbox-like direction, gap, padding, alignment)
-- Extract colors, text content, and styling information
-- Render nodes to PNG screenshots with near-design fidelity
-- Export vectors as SVG, PDF, PNG, or WebP
-- Effects (shadows, layer blur), gradients, masks, dashed borders — background/glass blur is approximated by the translucent fill (SVG has no backdrop-filter)
-
-## Fork changes
-
-Rendering fidelity (verified pixel-by-pixel against Figma prototype screenshots):
-
-- **Embedded glyph rendering**: text renders from the glyph outlines stored in the file (`derivedTextData.glyphs`), reproducing exact letterforms of fonts that are not installed anywhere — including circular text on paths with per-glyph rotation
-- Component INSTANCE resolution in both rendering and `get_text_content` (SYMBOL expansion with overrides, incl. `componentPropAssignments`)
-- Masks become SVG clipPaths (icon "Bounding box" layers no longer paint over glyphs)
-- Frame borders render from Figma's precomputed `strokeGeometry` (dashes included; invisible borders stay invisible)
-- Linear/radial gradient fills, mirrored (negative-scale) nodes, `textCase`, rotated text
-- Sibling z-order follows the fractional-index position (not nodeChanges order)
-- Google Fonts on-demand download + `fontMap`/`fontDirs` for fallback text
-
-Robustness:
-
-- Schema-driven argument validation with clear error messages
-- `resolveNodePath` handles node names containing `/` and reports candidates on failure
-- BigInt-safe `get_raw_message`; graceful fallbacks when geometry blobs are missing
-- `server.ts` split into per-category tool modules; vitest suite (`npm test`)
-
-## Testing
+## 開発者向け
 
 ```bash
+git clone https://github.com/siu-issiki/fig-mcp
+cd fig-mcp && npm install && npm run build
 npm test
 ```
 
-Unit tests run standalone. Integration tests against a real file run when
-`FIG_TEST_FILE` points at a `.fig` export (defaults to `~/Downloads/toritori2.0.fig`).
+単体テストはそのまま動きます。実ファイルを使う統合テストは、環境変数 `FIG_TEST_FILE` に `.fig` ファイルのパスを設定すると実行されます。
 
-## Requirements
+動作要件: Node.js 20 以上
 
-- Node.js 20 or higher
-
-## Limitations
-
-- The `.fig` format is undocumented and may change
-- This is for local `.fig` files only (use a cloud API for hosted files)
-- Some complex properties may not be fully parsed
-
-## License
+## ライセンス
 
 MIT
 
-## Credits
+## クレジット
 
-- [Kiwi](https://github.com/evanw/kiwi) by Evan Wallace - Binary format library
-- [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) - Protocol implementation
+- [Kiwi](https://github.com/evanw/kiwi) by Evan Wallace — バイナリ形式ライブラリ
+- [MCP SDK](https://github.com/modelcontextprotocol/typescript-sdk) — プロトコル実装
+- フォーク元: [bilalba/fig-mcp](https://github.com/bilalba/fig-mcp)
