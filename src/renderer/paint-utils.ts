@@ -5,7 +5,7 @@
 import type { FigNode, Paint, GradientStop } from "../parser/types.js";
 import { colorToCSS } from "../parser/layout-inference.js";
 import type { RenderContext, TransformMatrix } from "./render-types.js";
-import { invertTransform } from "./render-utils.js";
+import { invertTransform, multiplyTransforms } from "./render-utils.js";
 
 /**
  * Get paints array from a node (handles both 'fills'/'strokes' and 'fillPaints'/'strokePaints').
@@ -61,6 +61,7 @@ function getGradientStops(paint: Paint): GradientStop[] | undefined {
 export function paintToSvgFill(
   paint: Paint | undefined,
   ctx: RenderContext | undefined,
+  shape?: { transform: TransformMatrix; width: number; height: number },
 ): string | undefined {
   if (!paint || paint.visible === false) return undefined;
   if (paint.type === "SOLID") return paintToColor(paint);
@@ -87,17 +88,40 @@ export function paintToSvgFill(
     .join("");
 
   const id = `grad-${ctx.shadowCounter++}`;
-  const gt = `gradientTransform="matrix(${gradientToShape.a} ${gradientToShape.b} ${gradientToShape.c} ${gradientToShape.d} ${gradientToShape.e} ${gradientToShape.f})"`;
+
+  // With the shape's world transform available, express the gradient in
+  // user space: world = shapeTransform ∘ scale(w,h) maps normalized shape
+  // space to user space, so the gradient follows rotated/skewed nodes.
+  // objectBoundingBox would use the axis-aligned bbox and drift under
+  // rotation (geometry is emitted in absolute coordinates).
+  let units: string;
+  let finalT: TransformMatrix;
+  if (shape && shape.width > 0 && shape.height > 0) {
+    units = "userSpaceOnUse";
+    const normalizedToUser = multiplyTransforms(shape.transform, {
+      a: shape.width,
+      b: 0,
+      c: 0,
+      d: shape.height,
+      e: 0,
+      f: 0,
+    });
+    finalT = multiplyTransforms(normalizedToUser, gradientToShape);
+  } else {
+    units = "objectBoundingBox";
+    finalT = gradientToShape;
+  }
+  const gt = `gradientTransform="matrix(${finalT.a} ${finalT.b} ${finalT.c} ${finalT.d} ${finalT.e} ${finalT.f})"`;
 
   if (paint.type === "GRADIENT_RADIAL" || paint.type === "GRADIENT_DIAMOND") {
     ctx.defs.push(
-      `<radialGradient id="${id}" gradientUnits="objectBoundingBox" cx="0.5" cy="0.5" r="0.5" ${gt}>${stopsSvg}</radialGradient>`,
+      `<radialGradient id="${id}" gradientUnits="${units}" cx="0.5" cy="0.5" r="0.5" ${gt}>${stopsSvg}</radialGradient>`,
     );
   } else {
     // GRADIENT_LINEAR (and GRADIENT_ANGULAR approximated as linear):
     // the gradient axis runs from (0, 0.5) to (1, 0.5) in gradient space
     ctx.defs.push(
-      `<linearGradient id="${id}" gradientUnits="objectBoundingBox" x1="0" y1="0.5" x2="1" y2="0.5" ${gt}>${stopsSvg}</linearGradient>`,
+      `<linearGradient id="${id}" gradientUnits="${units}" x1="0" y1="0.5" x2="1" y2="0.5" ${gt}>${stopsSvg}</linearGradient>`,
     );
   }
   return `url(#${id})`;

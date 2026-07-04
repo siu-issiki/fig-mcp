@@ -497,7 +497,11 @@ export function renderStrokeGeometryFill(
   output: string[]
 ): boolean {
   const strokes = getPaints(node as FigNode, "strokes");
-  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx);
+  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx, {
+    transform,
+    width: node.size?.x ?? node.width ?? 0,
+    height: node.size?.y ?? node.height ?? 0,
+  });
   if (!strokeColor) return false;
 
   const strokeGeometry = node.strokeGeometry;
@@ -543,7 +547,11 @@ export function renderFilledVector(
   output: string[]
 ): boolean {
   const fills = getPaints(node as FigNode, "fills");
-  const fillColor = paintToSvgFill(getVisiblePaint(fills), ctx);
+  const fillColor = paintToSvgFill(getVisiblePaint(fills), ctx, {
+    transform,
+    width: node.size?.x ?? node.width ?? 0,
+    height: node.size?.y ?? node.height ?? 0,
+  });
   if (!fillColor) return false;
 
   const fillGeometry = node.fillGeometry;

@@ -211,6 +211,20 @@ function generateEffectFilters(
   if (layerBlurs.length > 0) {
     const filterId = `blur-${ctx.shadowCounter++}`;
     const stdDev = (layerBlurs[0].radius ?? 0) / 2;
+    if (dropShadows.length > 0) {
+      // Chain: blur the node, then drop-shadow the blurred result, so
+      // blur + shadow layers keep both effects.
+      const e = dropShadows[0];
+      ctx.defs.push(
+        `<filter id="${filterId}" x="-100%" y="-100%" width="300%" height="300%">` +
+          `<feGaussianBlur in="SourceGraphic" stdDeviation="${stdDev}" result="blurred" />` +
+          `<feDropShadow in="blurred" dx="${e.offset?.x ?? 0}" dy="${e.offset?.y ?? 0}" ` +
+          `stdDeviation="${(e.radius ?? 0) / 2}" flood-color="${colorToRgba(e.color)}" />` +
+          `</filter>`
+      );
+      return filterId;
+    }
+    // Inner shadow + layer blur is not composed; the blur dominates visually.
     ctx.defs.push(
       `<filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%">` +
         `<feGaussianBlur stdDeviation="${stdDev}" />` +
@@ -545,8 +559,13 @@ function renderRectangle(
   const fills = getPaints(node as FigNode, "fills");
   const strokes = includeStrokes ? getPaints(node as FigNode, "strokes") : undefined;
   const fillPaint = getVisiblePaint(fills);
-  const fillColor = includeFills ? paintToSvgFill(fillPaint, ctx) : undefined;
-  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx);
+  const gradientShape = {
+    transform,
+    width: node.width ?? 0,
+    height: node.height ?? 0,
+  };
+  const fillColor = includeFills ? paintToSvgFill(fillPaint, ctx, gradientShape) : undefined;
+  const strokeColor = paintToSvgFill(getVisiblePaint(strokes), ctx, gradientShape);
 
   // Check for image fill
   let hasImageFill = false;

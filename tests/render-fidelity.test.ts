@@ -259,3 +259,39 @@ describe("blur effects", () => {
     expect(svg).toContain("rgba(255, 255, 255, 0.50)");
   });
 });
+
+describe("effect and gradient composition", () => {
+  it("chains layer blur with drop shadow", () => {
+    const rect = base(42, "blur-shadow", "RECTANGLE", {
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 }, visible: true }],
+      effects: [
+        { type: "FOREGROUND_BLUR", visible: true, radius: 20 },
+        { type: "DROP_SHADOW", visible: true, radius: 4, offset: { x: 0, y: 2 }, color: { r: 0, g: 0, b: 0, a: 0.25 } },
+      ],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain("feGaussianBlur");
+    expect(svg).toContain("feDropShadow");
+  });
+
+  it("rotated gradients follow the node transform via userSpaceOnUse", () => {
+    const s = Math.SQRT1_2;
+    const rect = base(43, "rot-grad", "RECTANGLE", {
+      width: 100,
+      height: 100,
+      transform: { m00: s, m01: -s, m02: 100, m10: s, m11: s, m12: 0 },
+      fills: [{
+        type: "GRADIENT_LINEAR",
+        visible: true,
+        stops: [
+          { position: 0, color: { r: 1, g: 0, b: 0, a: 1 } },
+          { position: 1, color: { r: 0, g: 0, b: 1, a: 1 } },
+        ],
+      }],
+    });
+    const { svg } = renderScreen(rect, undefined, []);
+    expect(svg).toContain('gradientUnits="userSpaceOnUse"');
+    // rotation components present in the gradient transform
+    expect(svg).toMatch(/gradientTransform="matrix\(70\.710\d+ 70\.710\d+/);
+  });
+});
