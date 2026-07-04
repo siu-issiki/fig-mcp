@@ -48,6 +48,27 @@ describe.skipIf(!hasFig)("integration: real .fig file", () => {
     expect(png.length).toBeGreaterThan(20_000);
   });
 
+  it("renders circular stamp text via textPath", async () => {
+    const { parseFigFile, buildNodeIdIndex, buildRawNodeIndex } = await import(
+      "../src/parser/index.js"
+    );
+    const { renderScreen } = await import("../src/renderer/render-screen.js");
+    const parsed = await parseFigFile(FIG);
+    const nodeIdIndex = buildNodeIdIndex(parsed.document);
+    const rawNodeIndex = parsed.rawMessage
+      ? buildRawNodeIndex(parsed.rawMessage)
+      : new Map<string, Record<string, unknown>>();
+    // "stamp" group on the first ticket of the MY TRIP screen
+    const stamp = nodeIdIndex.get("1:4343");
+    expect(stamp).toBeDefined();
+    const result = renderScreen(stamp!, parsed.images, parsed.blobs ?? [], {
+      nodeIndex: nodeIdIndex,
+      rawNodeIndex,
+    });
+    expect(result.svg).toContain("<textPath");
+    expect(result.svg).toContain("KANAGAWA");
+  });
+
   it("rejects tool calls with missing required arguments", async () => {
     const server = createServer();
     const client = new Client({ name: "test-client", version: "0.0.0" });

@@ -381,17 +381,12 @@ export function isStrokedVector(node: SceneNode): boolean {
 /**
  * Render a stroked vector using its centerline.
  */
-export function renderStrokedVector(
+export function buildCenterlinePathD(
   node: SceneNode,
   transform: TransformMatrix,
   blobs: BlobEntry[] | undefined,
   ctx: RenderContext,
-  output: string[]
-): boolean {
-  const strokes = getPaints(node as FigNode, "strokes");
-  const strokeColor = paintToColor(getVisiblePaint(strokes));
-  if (!strokeColor) return false;
-
+): string | null {
   const vectorData = node.vectorData;
   const normalizedSize = vectorData?.normalizedSize;
 
@@ -417,7 +412,7 @@ export function renderStrokedVector(
     centerline = createCenterlineFromNormalizedSize(normalizedSize);
   }
 
-  if (!centerline || centerline.length === 0) return false;
+  if (!centerline || centerline.length === 0) return null;
 
   // Get target size from node
   const targetWidth = node.size?.x ?? node.width ?? normalizedSize?.x ?? 1;
@@ -449,7 +444,21 @@ export function renderStrokedVector(
   };
   const finalTransform = multiplyTransforms(transform, localTransform);
 
-  const pathD = buildSvgPath(centerline, finalTransform);
+  return buildSvgPath(centerline, finalTransform);
+}
+
+export function renderStrokedVector(
+  node: SceneNode,
+  transform: TransformMatrix,
+  blobs: BlobEntry[] | undefined,
+  ctx: RenderContext,
+  output: string[]
+): boolean {
+  const strokes = getPaints(node as FigNode, "strokes");
+  const strokeColor = paintToColor(getVisiblePaint(strokes));
+  if (!strokeColor) return false;
+
+  const pathD = buildCenterlinePathD(node, transform, blobs, ctx);
   if (!pathD) return false;
 
   // Build stroke attributes
@@ -473,6 +482,55 @@ export function renderStrokedVector(
 // ============================================================================
 // Filled Vector Rendering
 // ============================================================================
+
+/**
+ * Render a node's stroke using its precomputed strokeGeometry, filled with
+ * the stroke paint. Figma serializes the authoritative stroke outline here
+ * (including dash segments and per-side weights); degenerate geometry fills
+ * to nothing, matching frames whose strokes are effectively invisible.
+ */
+export function renderStrokeGeometryFill(
+  node: SceneNode,
+  transform: TransformMatrix,
+  blobs: BlobEntry[] | undefined,
+  ctx: RenderContext,
+  output: string[]
+): boolean {
+  const strokes = getPaints(node as FigNode, "strokes");
+  const strokeColor = paintToColor(getVisiblePaint(strokes));
+  if (!strokeColor) return false;
+
+  const strokeGeometry = node.strokeGeometry;
+  if (!strokeGeometry?.length) return false;
+
+  let rendered = false;
+  for (const path of strokeGeometry) {
+    let commands: PathCommand[] | null = null;
+
+    if (typeof path.commandsBlob === "number") {
+      commands = decodePathCommands(path.commandsBlob, blobs, ctx);
+    } else if (path.commands) {
+      commands = decodePathCommandsFromArray(path.commands);
+    }
+
+    if (!commands) continue;
+
+    const pathD = buildSvgPath(commands, transform);
+    if (!pathD) continue;
+
+    const windingRule = path.windingRule?.toLowerCase() === "evenodd" ? "evenodd" : "nonzero";
+    const attrs: string[] = [
+      `d="${pathD}"`,
+      `fill="${strokeColor}"`,
+      `fill-rule="${windingRule}"`,
+    ];
+    if (node.opacity !== undefined && node.opacity < 1) attrs.push(`opacity="${node.opacity}"`);
+    output.push(`<path ${attrs.join(" ")} />`);
+    rendered = true;
+  }
+
+  return rendered;
+}
 
 /**
  * Render a filled vector using its fillGeometry.

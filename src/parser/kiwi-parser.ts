@@ -313,8 +313,32 @@ export function extractDocumentTree(message: Record<string, unknown>): DocumentN
   return null;
 }
 
+// Compact style codes ("B", "SB", "EB", …) used by some foundries
+const COMPACT_WEIGHT_CODES: Record<string, number> = {
+  th: 100,
+  el: 200,
+  ul: 200,
+  l: 300,
+  r: 400,
+  reg: 400,
+  m: 500,
+  sb: 600,
+  db: 600,
+  b: 700,
+  bi: 700,
+  eb: 800,
+  ub: 800,
+  h: 800,
+  bl: 900,
+  blk: 900,
+};
+
 function inferFontWeight(styleName: string): number {
   const name = styleName.toLowerCase();
+  const compact = name.replace(/[^a-z]/g, "");
+  if (COMPACT_WEIGHT_CODES[compact] !== undefined) {
+    return COMPACT_WEIGHT_CODES[compact];
+  }
   if (name.includes("thin")) return 100;
   if (name.includes("extra light") || name.includes("ultra light")) return 200;
   if (name.includes("light")) return 300;
@@ -329,6 +353,8 @@ function inferFontWeight(styleName: string): number {
 
 function inferFontStyle(styleName: string): "normal" | "italic" | "oblique" {
   const name = styleName.toLowerCase();
+  const compact = name.replace(/[^a-z]/g, "");
+  if (compact === "i" || compact === "bi") return "italic";
   if (name.includes("italic")) return "italic";
   if (name.includes("oblique")) return "oblique";
   return "normal";
@@ -361,6 +387,7 @@ function convertToFigNode(raw: unknown): FigNode | null {
     "backgroundColor",
     "clipsContent", "isMask",
     "fillGeometry", "strokeGeometry", "vectorData",
+    "textPathStart", "booleanOperation",
   ];
 
   // Use an indexable type for property assignment
@@ -378,6 +405,11 @@ function convertToFigNode(raw: unknown): FigNode | null {
   // The kiwi schema stores the mask flag as "mask"
   if (obj["mask"] !== undefined) {
     nodeRecord["isMask"] = obj["mask"];
+  }
+
+  // The kiwi schema stores dash settings as "dashPattern"
+  if (nodeRecord["strokeDashes"] === undefined && Array.isArray(obj["dashPattern"]) && (obj["dashPattern"] as unknown[]).length > 0) {
+    nodeRecord["strokeDashes"] = obj["dashPattern"];
   }
 
   for (const prop of propsToKeep) {
